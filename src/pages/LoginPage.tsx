@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Avatar, Badge, Input } from '../components/ui'
+import { Avatar, Badge, ConfirmButton, Input } from '../components/ui'
 import { campusName } from '../data/logic'
 import { ROLE_LABEL, type Role } from '../data/types'
 import { useDb } from '../store/db'
@@ -77,12 +77,7 @@ export function LoginPage() {
           </div>
 
           <div className="mt-6 border-t border-slate-100 pt-4 text-right">
-            <button
-              onClick={() => confirm('Reset all demo data back to the original seed?') && resetDemo()}
-              className="text-sm text-slate-500 underline hover:text-slate-700"
-            >
-              Reset demo data
-            </button>
+            <ConfirmButton link label="Reset demo data" confirmLabel="Reset all demo data back to the original seed?" onConfirm={resetDemo} />
           </div>
         </div>
       </div>

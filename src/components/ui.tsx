@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import { useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
 export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(' ')
@@ -128,4 +128,23 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
   const initials = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
   const sz = { sm: 'h-7 w-7 text-xs', md: 'h-9 w-9 text-sm', lg: 'h-14 w-14 text-lg' }[size]
   return <span className={cx('inline-flex shrink-0 items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700', sz)}>{initials}</span>
+}
+
+/** Two-step button that asks for confirmation inline (no browser dialog). */
+export function ConfirmButton({ label, confirmLabel, onConfirm, variant = 'danger', link }: { label: string; confirmLabel: string; onConfirm: () => void; variant?: BtnVariant; link?: boolean }) {
+  const [asking, setAsking] = useState(false)
+  if (!asking) {
+    return link ? (
+      <button onClick={() => setAsking(true)} className="text-sm text-slate-500 underline hover:text-slate-700">{label}</button>
+    ) : (
+      <Button variant={variant} onClick={() => setAsking(true)}>{label}</Button>
+    )
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-slate-600">{confirmLabel}</span>
+      <Button variant="danger" onClick={() => { setAsking(false); onConfirm() }}>Yes, reset</Button>
+      <Button variant="secondary" onClick={() => setAsking(false)}>Cancel</Button>
+    </span>
+  )
 }

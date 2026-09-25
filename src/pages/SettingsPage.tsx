@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Card, Input, PageHeader } from '../components/ui'
+import { Button, Card, ConfirmButton, Input, PageHeader } from '../components/ui'
 import { useDb } from '../store/db'
 
 export function SettingsPage() {
@@ -34,7 +34,7 @@ export function SettingsPage() {
       </Card>
       <Card title="Demo data">
         <p className="mb-3 text-sm text-slate-600">All data in this prototype lives in your browser's local storage. Reset it to start the walkthrough again.</p>
-        <Button variant="danger" onClick={() => confirm('Reset all demo data?') && resetDemo()}>Reset demo data</Button>
+        <ConfirmButton label="Reset demo data" confirmLabel="Reset all demo data?" onConfirm={resetDemo} />
       </Card>
     </div>
   )

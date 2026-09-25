@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { canManageTraining, canViewStaff } from './data/logic'
 import { DashboardPage } from './pages/DashboardPage'
@@ -47,9 +47,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <DbProvider>
-      <BrowserRouter>
+      <HashRouter>
         <AppRoutes />
-      </BrowserRouter>
+      </HashRouter>
     </DbProvider>
   )
 }

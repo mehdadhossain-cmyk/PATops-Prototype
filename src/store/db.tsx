@@ -8,7 +8,7 @@ const SESSION_KEY = 'patops.session'
 
 function load(): DbState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = storage.get(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as DbState
       if (parsed.version === DB_VERSION) return parsed
@@ -17,6 +17,25 @@ function load(): DbState {
     // fall through to seed
   }
   return buildSeed()
+}
+
+/** Storage can be unavailable (private mode, blocked site data); the app still works in memory. */
+const storage = {
+  get: (k: string) => {
+    try {
+      return localStorage.getItem(k)
+    } catch {
+      return null
+    }
+  },
+  set: (k: string, v: string | null) => {
+    try {
+      if (v === null) localStorage.removeItem(k)
+      else localStorage.setItem(k, v)
+    } catch {
+      // ignore
+    }
+  },
 }
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -50,15 +69,14 @@ const DbContext = createContext<DbContextValue | null>(null)
 
 export function DbProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<DbState>(load)
-  const [meId, setMeId] = useState<string | null>(() => localStorage.getItem(SESSION_KEY))
+  const [meId, setMeId] = useState<string | null>(() => storage.get(SESSION_KEY))
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db))
+    storage.set(STORAGE_KEY, JSON.stringify(db))
   }, [db])
 
   useEffect(() => {
-    if (meId) localStorage.setItem(SESSION_KEY, meId)
-    else localStorage.removeItem(SESSION_KEY)
+    storage.set(SESSION_KEY, meId)
   }, [meId])
 
   const me = db.users.find((u) => u.id === meId) ?? null
