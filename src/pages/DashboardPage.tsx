@@ -5,6 +5,7 @@ import { CaseActionButtons } from '../components/Wellbeing'
 import { Sparkline } from '../components/AttendanceChart'
 import { AttendanceValue, StageBadge } from '../components/Risk'
 import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
+import { openPeriods, progress, visibleNonSubmissions } from '../data/submissions'
 import { caseActions, casePatId, compliance, visibleCases } from '../data/wellbeing'
 import { studentName } from '../data/logic'
 import { StaffStatusBadge } from '../components/StatusBadges'
@@ -87,6 +88,7 @@ function PatDashboard({ me }: { me: User }) {
           )}
         </Card>
         <MyGroupsCard me={me} />
+        {me.status === 'active' && <NonSubmissionCard me={me} />}
         {me.status === 'active' && <AtRiskCard me={me} />}
         {me.status === 'active' && <WellbeingCard me={me} />}
         {me.status === 'active' && <CallLogCard me={me} />}
@@ -246,6 +248,9 @@ function TeamDashboard({ me }: { me: User }) {
       </div>
       <div className="mb-5">
         <TeamAtRiskCard me={me} />
+      </div>
+      <div className="mb-5">
+        <TeamNonSubmissionCard me={me} />
       </div>
       <div className="mb-5">
         <TeamWellbeingCard me={me} />
@@ -468,6 +473,62 @@ function TeamAtRiskCard({ me }: { me: User }) {
         </table>
       </div>
       <p className="mt-2 text-xs text-slate-500">The bar is scaled so a full bar means 25% of active students are at risk.</p>
+    </Card>
+  )
+}
+
+function NonSubmissionCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const periods = openPeriods(db)
+    .map((p) => ({ p, items: visibleNonSubmissions(db, me, p.id) }))
+    .filter((x) => x.items.length > 0)
+  if (periods.length === 0) return null
+  return (
+    <Card title="Non-submissions to follow up" className="lg:col-span-2" actions={<Link to="/non-submissions" className="text-sm text-brand-600 hover:underline">Open non-submissions</Link>}>
+      <ul className="space-y-3">
+        {periods.map(({ p, items }) => {
+          const prog = progress(items, p)
+          return (
+            <li key={p.id} className="text-sm">
+              <div className="mb-1 flex flex-wrap justify-between gap-2">
+                <Link to={`/non-submissions?period=${p.id}`} className="font-medium hover:text-brand-600">{p.name}</Link>
+                <span className={cx(prog.notContacted ? 'text-rose-600' : 'text-emerald-700')}>
+                  {prog.notContacted ? `${prog.notContacted} not contacted yet · follow up by ${fmtDate(p.followUpBy)}` : 'All followed up ✓'}
+                </span>
+              </div>
+              <Progress value={prog.followedUpPct} tone={prog.followedUpPct >= 90 ? 'good' : prog.followedUpPct >= 60 ? 'warn' : 'bad'} />
+              <div className="mt-1 text-xs text-slate-500">{prog.total} missed submissions · {prog.followedUpPct}% followed up · {prog.resolved} resolved</div>
+            </li>
+          )
+        })}
+      </ul>
+    </Card>
+  )
+}
+
+function TeamNonSubmissionCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const periods = openPeriods(db)
+  if (periods.length === 0) return null
+  return (
+    <Card title="Non-submissions" actions={<Link to="/non-submissions" className="text-sm text-brand-600 hover:underline">Open non-submissions</Link>}>
+      <ul className="space-y-3">
+        {periods.map((p) => {
+          const prog = progress(visibleNonSubmissions(db, me, p.id), p)
+          return (
+            <li key={p.id} className="text-sm">
+              <div className="mb-1 flex flex-wrap justify-between gap-2">
+                <Link to={`/non-submissions?period=${p.id}`} className="font-medium hover:text-brand-600">{p.name}</Link>
+                <span className="text-slate-500">follow up by {fmtDate(p.followUpBy)}</span>
+              </div>
+              <Progress value={prog.followedUpPct} tone={prog.followedUpPct >= 90 ? 'good' : prog.followedUpPct >= 60 ? 'warn' : 'bad'} />
+              <div className="mt-1 text-xs text-slate-500">
+                {prog.total} missed · {prog.followedUpPct}% followed up · <span className={cx(prog.notContacted > 0 && 'text-rose-600')}>{prog.notContacted} not contacted</span> · {prog.resolved} resolved
+              </div>
+            </li>
+          )
+        })}
+      </ul>
     </Card>
   )
 }

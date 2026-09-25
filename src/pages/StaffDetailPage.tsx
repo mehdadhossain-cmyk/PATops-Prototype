@@ -24,6 +24,7 @@ import {
 } from '../data/logic'
 import { casePatId, compliance } from '../data/wellbeing'
 import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
+import { openPeriods, progress, visibleNonSubmissions } from '../data/submissions'
 import { useDb } from '../store/db'
 
 export function StaffDetailPage() {
@@ -139,6 +140,15 @@ export function StaffDetailPage() {
                   <Stat label="Announcements" value={s.announcements30} hint={`last ${CONTACT_GAP_DAYS} days`} />
                   <Stat label="Overdue follow-ups" value={s.overdueFollowUps} tone={s.overdueFollowUps ? 'bad' : 'good'} />
                 </div>
+                {openPeriods(db).map((p) => {
+                  const prog = progress(visibleNonSubmissions(db, u, p.id), p)
+                  return prog.total ? (
+                    <p key={p.id} className="mt-3 text-sm text-slate-600">
+                      <Link to={`/non-submissions?period=${p.id}`} className="font-medium text-brand-600 hover:underline">{p.name}</Link>: {prog.total} missed submissions ·{' '}
+                      {prog.followedUpPct}% followed up · <span className={prog.notContacted ? 'text-rose-600' : ''}>{prog.notContacted} not contacted</span>
+                    </p>
+                  ) : null
+                })}
                 {(() => {
                   const { atRisk } = riskRows(db, u)
                   return (

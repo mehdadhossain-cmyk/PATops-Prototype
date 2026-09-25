@@ -15,6 +15,7 @@ import { CallLogPage } from './pages/CallLogPage'
 import { WellbeingPage } from './pages/WellbeingPage'
 import { AtRiskPage } from './pages/AtRiskPage'
 import { AttendancePage } from './pages/AttendancePage'
+import { NonSubmissionsPage } from './pages/NonSubmissionsPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { ImportPage } from './pages/ImportPage'
@@ -48,6 +49,7 @@ function AppRoutes() {
         <Route path="call-log" element={<CallLogPage />} />
         <Route path="wellbeing" element={<WellbeingPage />} />
         <Route path="at-risk" element={<AtRiskPage />} />
+        <Route path="non-submissions" element={<NonSubmissionsPage />} />
         {canManageStudents(me.role) && <Route path="attendance" element={<AttendancePage />} />}
         <Route path="students/:id" element={<StudentDetailPage />} />
         {staff && <Route path="intakes" element={<IntakesPage />} />}

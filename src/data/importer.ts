@@ -322,3 +322,57 @@ export function previewAttendance(db: DbState, text: string, threshold: number, 
   })
   return { missingColumns: [], rows }
 }
+
+// ---- Non-submission lists -------------------------------------------------------
+
+type NsKey = 'ebs' | 'uniId' | 'assessment'
+
+export const nonSubmissionColumns: ColumnSpec<NsKey>[] = [
+  { key: 'ebs', label: 'EBS Person Code', aliases: ['person code', 'ebs code', 'ebs'], required: false },
+  { key: 'uniId', label: 'Uni Student ID', aliases: ['student id', 'university id', 'uni id'], required: false },
+  { key: 'assessment', label: 'Assessment', aliases: ['module', 'module / assessment', 'assessment name', 'module code', 'component'], required: true },
+]
+
+export const nonSubmissionTemplate = 'EBS Person Code,Assessment\n3000011,4BM001 Principles of Management: Essay'
+
+export interface NonSubmissionRow {
+  studentId: string
+  assessment: string
+}
+
+export function previewNonSubmissions(db: DbState, periodId: string, text: string): Preview<NonSubmissionRow> {
+  const table = parseTable(text)
+  if (table.length === 0) return { missingColumns: [], rows: [] }
+  const { idx, missing } = mapColumns(table[0], nonSubmissionColumns)
+  if (idx.ebs < 0 && idx.uniId < 0) missing.push('EBS Person Code or Uni Student ID')
+  if (missing.length) return { missingColumns: missing, rows: [] }
+
+  const period = db.submissionPeriods.find((p) => p.id === periodId)
+  const byEbs = new Map(db.students.map((s) => [s.ebsPersonCode, s]))
+  const byUni = new Map(db.students.map((s) => [s.uniStudentId.toLowerCase(), s]))
+  const groupIntake = new Map(db.groups.map((g) => [g.id, g.intakeId]))
+  const existing = new Set(db.nonSubmissions.filter((n) => n.periodId === periodId).map((n) => `${n.studentId}|${n.assessment.toLowerCase()}`))
+  const seen = new Set<string>()
+
+  const rows = table.slice(1).map((r, i): PreviewRow<NonSubmissionRow> => {
+    const get = (k: NsKey) => (idx[k] >= 0 ? (r[idx[k]] ?? '') : '')
+    const errors: string[] = []
+    const warnings: string[] = []
+    const s = (get('ebs') && byEbs.get(get('ebs'))) || (get('uniId') && byUni.get(get('uniId').toLowerCase())) || null
+    const assessment = get('assessment')
+    const label = s ? `${s.firstName} ${s.lastName}` : get('ebs') || get('uniId') || `Row ${i + 2}`
+    if (!s) errors.push('Student not found (check the EBS person code / uni ID)')
+    if (!assessment) errors.push('Missing assessment')
+    const key = s ? `${s.id}|${assessment.toLowerCase()}` : ''
+    if (s && assessment) {
+      if (seen.has(key)) errors.push('Same student and assessment twice in this file')
+      else if (existing.has(key)) errors.push('Already on this period’s list')
+      seen.add(key)
+    }
+    if (errors.length) return { rowNo: i + 2, data: null, action: 'skip', errors, warnings, label }
+    if (period && !period.intakeIds.includes(groupIntake.get(s!.groupId) ?? '')) warnings.push('Student is not in an intake covered by this period')
+    if (s!.status !== 'active') warnings.push(`Student is ${s!.status}`)
+    return { rowNo: i + 2, data: { studentId: s!.id, assessment }, action: 'create', errors, warnings, label: `${label} · ${assessment}` }
+  })
+  return { missingColumns: [], rows }
+}

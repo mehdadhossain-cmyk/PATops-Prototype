@@ -4,10 +4,12 @@ import { buildAcademicSeed } from '../data/seedAcademic'
 import { buildCommsSeed } from '../data/seedComms'
 import { buildWellbeingSeed } from '../data/seedWellbeing'
 import { buildAttendanceSeed } from '../data/seedAttendance'
+import { buildSubmissionsSeed } from '../data/seedSubmissions'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
 import type { RetentionStage } from '../data/types'
-import type { AttendanceRow } from '../data/importer'
+import type { AttendanceRow, NonSubmissionRow } from '../data/importer'
+import type { FollowUpStatus, NonSubmission, SubmissionPeriod } from '../data/types'
 import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User, WellbeingCase, WellbeingCategory } from '../data/types'
 import { nextOpenCycle } from '../data/wellbeing'
 
@@ -36,6 +38,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 3) next = { ...next, ...buildWellbeingSeed(next.users, next.groups, next.students), version: 4 }
   // v4 -> v5: add weekly attendance and retention notes.
   if (next.version === 4) next = { ...next, ...buildAttendanceSeed(next.groups, next.students, next.intakes), version: 5 }
+  // v5 -> v6: add submission periods and non-submissions.
+  if (next.version === 5) next = { ...next, ...buildSubmissionsSeed(next.groups, next.students), version: 6 }
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -105,6 +109,9 @@ interface DbContextValue {
   closeCase: (caseId: string, reason: string) => void
   importAttendance: (weekEnding: string, rows: AttendanceRow[], source: string) => void
   addRiskNote: (studentId: string, text: string, stage: RetentionStage | null) => void
+  savePeriod: (p: SubmissionPeriod) => void
+  importNonSubmissions: (periodId: string, rows: NonSubmissionRow[], source: string) => void
+  updateNonSubmission: (id: string, patch: { status: FollowUpStatus; note: string; expectedDate: string | null }, callLog: 'phone' | 'whatsapp' | 'email' | 'sms' | 'in_person' | null) => void
 }
 
 const DbContext = createContext<DbContextValue | null>(null)
@@ -457,6 +464,48 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
           {
             type: stage ? 'risk.stage' : 'risk.note',
             message: `${stage ? `Retention stage set to "${stage.replace('_', ' ')}"` : 'Retention note added'}${s ? `: ${s.firstName} ${s.lastName}` : ''}`,
+            subjectUserId: patId,
+          },
+        )
+      },
+      savePeriod: (p) => {
+        const prev = db.submissionPeriods.find((x) => x.id === p.id)
+        mutate((d) => ({ ...d, submissionPeriods: prev ? d.submissionPeriods.map((x) => (x.id === p.id ? p : x)) : [...d.submissionPeriods, p] }), {
+          type: 'submissions.period',
+          message: !prev ? `Created submission period "${p.name}"` : prev.status !== p.status ? `${p.status === 'closed' ? 'Closed' : 'Reopened'} submission period "${p.name}"` : `Updated submission period "${p.name}"`,
+          subjectUserId: null,
+        })
+      },
+      importNonSubmissions: (periodId, rows, source) => {
+        const items: NonSubmission[] = rows.map((r) => ({ id: uid('ns'), periodId, ...r, status: 'not_contacted', note: '', expectedDate: null, updatedAt: null, updatedBy: null }))
+        const name = db.submissionPeriods.find((p) => p.id === periodId)?.name ?? ''
+        mutate((d) => ({ ...d, nonSubmissions: [...d.nonSubmissions, ...items] }), {
+          type: 'submissions.imported', message: `Imported ${rows.length} non-submissions into "${name}" from ${source}`, subjectUserId: null,
+        })
+      },
+      updateNonSubmission: (id, patch, callLog) => {
+        const n = db.nonSubmissions.find((x) => x.id === id)
+        if (!n || !me) return
+        const s = db.students.find((x) => x.id === n.studentId)
+        const patId = db.groups.find((g) => g.id === s?.groupId)?.patId ?? null
+        const t = now()
+        const comm: CommLog | null = callLog
+          ? {
+              id: uid('cl'), authorId: me.id, kind: 'individual', studentId: n.studentId, groupIds: [], channel: callLog, direction: 'outbound',
+              outcome: patch.status === 'no_response' ? 'no_answer' : 'reached', reason: 'assessment',
+              summary: `Non-submission follow-up (${n.assessment}): ${patch.note || patch.status.replace('_', ' ')}`,
+              at: t, loggedAt: t, followUpDate: patch.expectedDate, followUpDoneAt: null, voidedAt: null, voidReason: '',
+            }
+          : null
+        mutate(
+          (d) => ({
+            ...d,
+            nonSubmissions: d.nonSubmissions.map((x) => (x.id === id ? { ...x, ...patch, updatedAt: t, updatedBy: me.id } : x)),
+            comms: comm ? [...d.comms, comm] : d.comms,
+          }),
+          {
+            type: 'submissions.followup',
+            message: `Non-submission follow-up: ${s ? `${s.firstName} ${s.lastName}` : ''}, ${n.assessment} → ${patch.status.replace('_', ' ')}`,
             subjectUserId: patId,
           },
         )

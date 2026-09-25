@@ -310,6 +310,57 @@ export interface RiskNote {
   stage: RetentionStage | null
 }
 
+/** A submission window for one or more intakes, e.g. "Semester 1 final assessments". */
+export interface SubmissionPeriod {
+  id: string
+  name: string
+  intakeIds: string[]
+  deadline: string // ISO date the assessments were due
+  /** PATs should have followed up every student by this date. */
+  followUpBy: string
+  status: 'open' | 'closed'
+  createdBy: string
+  createdAt: string
+}
+
+export type FollowUpStatus =
+  | 'not_contacted'
+  | 'contacted'
+  | 'no_response'
+  | 'will_submit'
+  | 'extension'
+  | 'mitigating'
+  | 'submitted_late'
+  | 'withdrawn'
+
+export const FOLLOW_UP_LABEL: Record<FollowUpStatus, string> = {
+  not_contacted: 'Not contacted',
+  contacted: 'Contacted',
+  no_response: 'No response',
+  will_submit: 'Will submit',
+  extension: 'Extension granted',
+  mitigating: 'Mitigating circumstances',
+  submitted_late: 'Submitted late',
+  withdrawn: 'Withdrawn / interrupted',
+}
+
+/** Outcomes that close the follow-up. */
+export const RESOLVED_STATUSES: FollowUpStatus[] = ['extension', 'mitigating', 'submitted_late', 'withdrawn']
+
+/** One missed assessment for one student in a submission period. */
+export interface NonSubmission {
+  id: string
+  periodId: string
+  studentId: string
+  assessment: string
+  status: FollowUpStatus
+  note: string
+  /** When the student says they'll submit (for "will submit"). */
+  expectedDate: string | null
+  updatedAt: string | null
+  updatedBy: string | null
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -324,6 +375,8 @@ export interface DbState {
   attendance: AttendanceRecord[]
   attendanceUploads: AttendanceUpload[]
   riskNotes: RiskNote[]
+  submissionPeriods: SubmissionPeriod[]
+  nonSubmissions: NonSubmission[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

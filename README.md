@@ -33,8 +33,8 @@ PAT allocation is intentionally out of scope for this prototype.
 | 3 | **Call / communication log** (replaces the call-log Excel) | ✅ Done |
 | 4 | **Wellbeing plans**: bi-weekly meeting & "logged in wellbeing app" tracking | ✅ Done |
 | 5 | **Weekly attendance import & at-risk students** (<65%) with PAT + admin comment history | ✅ Done |
-| 6 | Non-submission tracking per submission period | ⏳ Next |
-| 7 | LSA tracking | ⏳ |
+| 6 | **Non-submission tracking** per submission period | ✅ Done |
+| 7 | LSA tracking | ⏳ Next |
 | 8 | Leave requests: dates → cover PATs accept → Lead → Manager | ⏳ |
 | 9 | Unified PAT dashboard / task list with due dates | ⏳ |
 | 10 | One-click audit export of a PAT's full history | ⏳ |
@@ -151,6 +151,29 @@ The wellbeing process: **form sent → form returned → wellbeing team decision
 
 Dashboards show each PAT's at-risk students and, for staff, an at-risk breakdown by campus.
 
+## Step 6: what you can test
+
+This replaces "one sheet per PAT plus one master sheet".
+
+**PAT Admin / Manager**
+- Create a **submission period** (for example "Semester 2 assessment 1") with its intakes, the submission deadline and the date PATs must follow up by. You can edit, close or reopen it.
+- **Upload list**: upload a CSV or paste the non-submission report: EBS person code or uni student ID, plus the assessment. One student can miss several assessments.
+  - The preview rejects unknown students, duplicates and rows already on the list.
+  - It warns about students outside the period's intakes.
+  - **Load example data** gives you a sample to try.
+- **By PAT** is the live master view: missed, not contacted, in progress, resolved and % followed up for each PAT. It updates the moment a PAT records a follow-up.
+- Export the full list to CSV at any time.
+
+**PAT**
+- See only your own students. Anyone not yet contacted is listed first, and at-risk students and students on a wellbeing plan are marked.
+- **Record follow-up** with:
+  - a status: contacted, no response, will submit (with an expected date), extension granted, mitigating circumstances, submitted late, or withdrawn/interrupted;
+  - a note;
+  - an optional **call log** entry, so it isn't typed twice.
+- The dashboard shows how far you are through each open period and your follow-up date.
+
+A student's page lists their missed submissions in every period.
+
 ## Code layout
 
 ```
@@ -164,6 +187,8 @@ src/data/seedWellbeing.ts demo referrals, plans and meetings
 src/data/risk.ts          attendance summary, at-risk and retention-stage rules (+ tests)
 src/data/seedAttendance.ts 10 weeks of demo attendance and retention notes
 src/components/AttendanceChart.tsx  weekly attendance chart and sparkline
+src/data/submissions.ts   non-submission follow-up progress rules (+ tests)
+src/data/seedSubmissions.ts demo submission periods and non-submissions
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited
