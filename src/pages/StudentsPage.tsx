@@ -4,6 +4,8 @@ import { StudentStatusBadge } from '../components/StatusBadges'
 import { Button, Card, Empty, Input, PageHeader, Select } from '../components/ui'
 import { campusName, studentName, userName, visibleGroups, visibleStudents } from '../data/logic'
 import type { StudentStatus } from '../data/types'
+import { WellbeingBadge } from '../components/Wellbeing'
+import { activePlanStudentIds } from '../data/wellbeing'
 import { useDb } from '../store/db'
 
 const PAGE = 50
@@ -18,6 +20,7 @@ export function StudentsPage() {
 
   const groups = useMemo(() => (me ? visibleGroups(db, me) : []), [db, me])
   const groupById = useMemo(() => new Map(db.groups.map((g) => [g.id, g])), [db.groups])
+  const onPlan = useMemo(() => activePlanStudentIds(db), [db])
 
   const rows = useMemo(() => {
     if (!me) return []
@@ -86,7 +89,7 @@ export function StudentsPage() {
                   return (
                     <tr key={s.id} className="hover:bg-slate-50">
                       <td className="py-2 pr-4">
-                        <Link to={`/students/${s.id}`} className="font-medium hover:text-brand-600">{studentName(s)}</Link>
+                        <Link to={`/students/${s.id}`} className="font-medium hover:text-brand-600">{studentName(s)}</Link>{onPlan.has(s.id) && <span className="ml-2"><WellbeingBadge /></span>}
                         <div className="text-xs text-slate-400">{s.uniEmail || s.personalEmail}</div>
                       </td>
                       <td className="py-2 pr-4 font-mono text-xs tabular-nums">{s.ebsPersonCode}</td>

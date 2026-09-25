@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { CommEntry, LogContactModal, Toast } from '../components/Comms'
+import { CaseDetail, SendFormModal, WellbeingBadge } from '../components/Wellbeing'
 import { Link, useParams } from 'react-router-dom'
 import { StudentStatusBadge } from '../components/StatusBadges'
 import { Button, Card, CopyButton, Empty, Field, Input, PageHeader, Select, Tabs } from '../components/ui'
@@ -16,6 +17,7 @@ export function StudentDetailPage() {
   if (!s) return <p>Student not found or not visible to you.</p>
   const g = db.groups.find((x) => x.id === s.groupId)
   const manage = canManageStudents(me.role)
+  const onPlan = db.wellbeingCases.some((c) => c.studentId === s.id && c.status === 'approved')
 
   return (
     <div>
@@ -24,7 +26,7 @@ export function StudentDetailPage() {
       </div>
       <PageHeader
         title={studentName(s)}
-        subtitle={<span className="flex items-center gap-2"><StudentStatusBadge status={s.status} /> EBS {s.ebsPersonCode} · Uni ID {s.uniStudentId}</span>}
+        subtitle={<span className="flex flex-wrap items-center gap-2"><StudentStatusBadge status={s.status} />{onPlan && <WellbeingBadge />} EBS {s.ebsPersonCode} · Uni ID {s.uniStudentId}</span>}
         actions={manage && !editing && <Button variant="secondary" onClick={() => setEditing(true)}>Edit record</Button>}
       />
 
@@ -55,6 +57,7 @@ export function StudentDetailPage() {
               <p className="text-sm text-slate-500">Not in a group.</p>
             )}
           </Card>
+          <WellbeingPanel studentId={s.id} />
           <ContactHistory studentId={s.id} />
         </div>
       )}
@@ -164,6 +167,30 @@ function ContactHistory({ studentId }: { studentId: string }) {
       )}
       <LogContactModal key={String(logging)} open={logging} studentIds={[s.id]} onClose={(msg) => { setLogging(false); if (msg) setToast(msg) }} />
       <Toast message={toast} onDone={clearToast} />
+    </Card>
+  )
+}
+
+function WellbeingPanel({ studentId }: { studentId: string }) {
+  const { db } = useDb()
+  const [sending, setSending] = useState(false)
+  const cases = db.wellbeingCases.filter((c) => c.studentId === studentId).sort((a, b) => b.formSentAt.localeCompare(a.formSentAt))
+  const current = cases.find((c) => c.status !== 'declined' && c.status !== 'closed')
+  const past = cases.filter((c) => c !== current)
+  return (
+    <Card
+      title="Wellbeing"
+      className="lg:col-span-3"
+      actions={!current && <Button variant="secondary" onClick={() => setSending(true)}>Wellbeing form sent</Button>}
+    >
+      {current ? <CaseDetail c={current} /> : <p className="text-sm text-slate-500">No open wellbeing referral or plan.</p>}
+      {past.length > 0 && (
+        <details className="mt-4 border-t border-slate-100 pt-3">
+          <summary className="cursor-pointer text-sm text-slate-600">Earlier referrals ({past.length})</summary>
+          <div className="mt-3 space-y-6">{past.map((c) => <CaseDetail key={c.id} c={c} />)}</div>
+        </details>
+      )}
+      <SendFormModal key={String(sending)} open={sending} studentId={studentId} onClose={() => setSending(false)} />
     </Card>
   )
 }

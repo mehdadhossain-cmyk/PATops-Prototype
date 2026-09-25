@@ -31,8 +31,8 @@ PAT allocation is intentionally out of scope for this prototype.
 | 1 | **Onboarding & training tracking** (user story 1) | ✅ Done |
 | 2 | **Intakes, partner universities, groups & student records** (admin import) | ✅ Done |
 | 3 | **Call / communication log** (replaces the call-log Excel) | ✅ Done |
-| 4 | Wellbeing plans: bi-weekly meeting & "logged in wellbeing app" tracking | ⏳ Next |
-| 5 | Weekly attendance import & at-risk students (<65%) with PAT + admin comment history | ⏳ |
+| 4 | **Wellbeing plans**: bi-weekly meeting & "logged in wellbeing app" tracking | ✅ Done |
+| 5 | Weekly attendance import & at-risk students (<65%) with PAT + admin comment history | ⏳ Next |
 | 6 | Non-submission tracking per submission period | ⏳ |
 | 7 | LSA tracking | ⏳ |
 | 8 | Leave requests: dates → cover PATs accept → Lead → Manager | ⏳ |
@@ -104,6 +104,25 @@ PAT allocation is intentionally out of scope for this prototype.
 
 Data is now saved in the browser's IndexedDB, which has more room than local storage. Data from earlier versions is upgraded automatically.
 
+## Step 4: what you can test
+
+The wellbeing process: **form sent → form returned → wellbeing team decision → a recorded Teams meeting every two weeks → support logged in the wellbeing team's system.** PATops tracks that each step happened. It stores only a broad category, and all details stay in the wellbeing system.
+
+**PAT**
+- Mark **Wellbeing form sent** from the Wellbeing page or a student's page. If the form isn't returned within 7 days, PATops asks you to chase it.
+- Record that the form was returned, then record the **wellbeing team's decision**. Approval starts the fortnightly schedule.
+- **Record meeting**: held or student didn't attend, and a confirmation that the meeting was recorded on Teams (required).
+  - Tick "logged in the wellbeing system" now, or use **Mark fortnight N logged** later.
+  - The meeting can also be added to your call log automatically.
+- Each plan shows one coloured chip per fortnight: held and logged, log pending, log overdue (more than 2 days), not held (more than 3 days past due), due now, or upcoming.
+- **Action needed** lists everything due or overdue, urgent items first. The dashboard shows the top items.
+- Students on a plan have a **♥ Wellbeing plan** badge on group lists, the student directory and their student page.
+
+**Lead / Admin / Manager**
+- The share of fortnightly meetings **held and logged**, meetings not held, and logs outstanding.
+- A **By PAT** table, sorted with the lowest compliance first. The dashboard shows the PATs with the most urgent wellbeing actions.
+- Every wellbeing step goes into the PAT's activity history (for the audit export).
+
 ## Code layout
 
 ```
@@ -112,6 +131,8 @@ src/data/seed.ts    demo data (6 campuses, ~40 staff, 6 training modules)
 src/data/seedAcademic.ts  demo universities, courses, intakes, ~80 groups, ~1,700 students
 src/data/importer.ts      CSV / Excel-paste parsing and row validation (+ tests)
 src/data/seedComms.ts     ~8 weeks of demo call-log history
+src/data/wellbeing.ts     wellbeing plan rules: fortnight schedule, overdue logic, compliance (+ tests)
+src/data/seedWellbeing.ts demo referrals, plans and meetings
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited

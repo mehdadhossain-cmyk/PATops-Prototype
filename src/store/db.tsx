@@ -2,9 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { buildSeed, DB_VERSION } from '../data/seed'
 import { buildAcademicSeed } from '../data/seedAcademic'
 import { buildCommsSeed } from '../data/seedComms'
+import { buildWellbeingSeed } from '../data/seedWellbeing'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
-import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User } from '../data/types'
+import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User, WellbeingCase, WellbeingCategory } from '../data/types'
+import { nextOpenCycle } from '../data/wellbeing'
 
 const SESSION_KEY = 'patops.session'
 
@@ -27,6 +29,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 1) next = { ...next, ...buildAcademicSeed(next.users, next.campuses), version: 2 }
   // v2 -> v3: add call log history.
   if (next.version === 2) next = { ...next, comms: buildCommsSeed(next.users, next.groups, next.students), version: 3 }
+  // v3 -> v4: add wellbeing referrals and plans.
+  if (next.version === 3) next = { ...next, ...buildWellbeingSeed(next.users, next.groups, next.students), version: 4 }
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -88,6 +92,12 @@ interface DbContextValue {
   addComms: (entries: NewCommInput[]) => void
   completeFollowUp: (id: string) => void
   voidComm: (id: string, reason: string) => void
+  sendWellbeingForm: (studentId: string, category: WellbeingCategory, sentAt: string) => void
+  markFormSubmitted: (caseId: string, at: string) => void
+  recordDecision: (caseId: string, approved: boolean, at: string, reason: string) => void
+  recordMeeting: (caseId: string, m: { heldAt: string; outcome: 'held' | 'no_show'; recorded: boolean; logged: boolean; addToCallLog: boolean }) => void
+  markMeetingLogged: (meetingId: string) => void
+  closeCase: (caseId: string, reason: string) => void
 }
 
 const DbContext = createContext<DbContextValue | null>(null)
@@ -160,6 +170,12 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
   )
 
   const value = useMemo<DbContextValue>(() => {
+    /** Wellbeing audit events are filed under the student's current PAT, naming the student. */
+    const wbAudit = (studentId: string | undefined, type: string, message: string) => {
+      const s = db.students.find((x) => x.id === studentId)
+      const patId = db.groups.find((g) => g.id === s?.groupId)?.patId ?? null
+      return { type, message: s ? `${message}: ${s.firstName} ${s.lastName}` : message, subjectUserId: patId }
+    }
     const moduleTitle = (id: string) => db.trainingModules.find((m) => m.id === id)?.title ?? id
     return {
       db,
@@ -349,6 +365,62 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
       },
       completeFollowUp: (id) => {
         setDb((d) => ({ ...d, comms: d.comms.map((c) => (c.id === id ? { ...c, followUpDoneAt: now() } : c)) }))
+      },
+      sendWellbeingForm: (studentId, category, sentAt) => {
+        const c: WellbeingCase = {
+          id: uid('wb'), studentId, category, status: 'form_sent', formSentAt: sentAt, formSentBy: me?.id ?? '',
+          submittedAt: null, decisionAt: null, decisionRecordedBy: null, declineReason: '', planStart: null, closedAt: null, closeReason: '',
+        }
+        mutate((d) => ({ ...d, wellbeingCases: [...d.wellbeingCases, c] }), wbAudit(studentId, 'wellbeing.form_sent', 'Wellbeing form sent'))
+      },
+      markFormSubmitted: (caseId, at) => {
+        const c = db.wellbeingCases.find((x) => x.id === caseId)
+        mutate((d) => ({ ...d, wellbeingCases: d.wellbeingCases.map((x) => (x.id === caseId ? { ...x, status: 'submitted', submittedAt: at } : x)) }),
+          wbAudit(c?.studentId, 'wellbeing.submitted', 'Wellbeing form returned by student'))
+      },
+      recordDecision: (caseId, approved, at, reason) => {
+        const c = db.wellbeingCases.find((x) => x.id === caseId)
+        mutate(
+          (d) => ({
+            ...d,
+            wellbeingCases: d.wellbeingCases.map((x) =>
+              x.id === caseId
+                ? { ...x, status: approved ? 'approved' : 'declined', decisionAt: at, decisionRecordedBy: me?.id ?? null, declineReason: approved ? '' : reason, planStart: approved ? at.slice(0, 10) : null }
+                : x,
+            ),
+          }),
+          wbAudit(c?.studentId, approved ? 'wellbeing.approved' : 'wellbeing.declined', approved ? 'Wellbeing plan approved by the wellbeing team' : 'Wellbeing form declined by the wellbeing team'),
+        )
+      },
+      recordMeeting: (caseId, m) => {
+        const c = db.wellbeingCases.find((x) => x.id === caseId)
+        if (!c || !me) return
+        const cycle = nextOpenCycle(c, db.wellbeingMeetings)
+        const t = now()
+        const meeting = { id: uid('wm'), caseId, cycle, heldAt: m.heldAt, outcome: m.outcome, recorded: m.recorded, loggedAt: m.logged ? t : null, recordedBy: me.id }
+        const comm: CommLog | null = m.addToCallLog
+          ? {
+              id: uid('cl'), authorId: me.id, kind: 'individual', studentId: c.studentId, groupIds: [], channel: 'teams', direction: 'outbound',
+              outcome: m.outcome === 'held' ? 'reached' : 'no_answer', reason: 'wellbeing',
+              summary: m.outcome === 'held' ? `Fortnightly wellbeing meeting on Teams (fortnight ${cycle + 1}).` : `Fortnightly wellbeing meeting (fortnight ${cycle + 1}): student did not attend.`,
+              at: m.heldAt, loggedAt: t, followUpDate: null, followUpDoneAt: null, voidedAt: null, voidReason: '',
+            }
+          : null
+        mutate(
+          (d) => ({ ...d, wellbeingMeetings: [...d.wellbeingMeetings, meeting], comms: comm ? [...d.comms, comm] : d.comms }),
+          wbAudit(c.studentId, 'wellbeing.meeting', `Wellbeing meeting recorded (fortnight ${cycle + 1}, ${m.outcome === 'held' ? 'held' : 'student did not attend'}${m.logged ? ', logged' : ''})`),
+        )
+      },
+      markMeetingLogged: (meetingId) => {
+        const m = db.wellbeingMeetings.find((x) => x.id === meetingId)
+        const c = db.wellbeingCases.find((x) => x.id === m?.caseId)
+        mutate((d) => ({ ...d, wellbeingMeetings: d.wellbeingMeetings.map((x) => (x.id === meetingId ? { ...x, loggedAt: now() } : x)) }),
+          wbAudit(c?.studentId, 'wellbeing.logged', `Confirmed wellbeing meeting (fortnight ${(m?.cycle ?? 0) + 1}) logged in the wellbeing system`))
+      },
+      closeCase: (caseId, reason) => {
+        const c = db.wellbeingCases.find((x) => x.id === caseId)
+        mutate((d) => ({ ...d, wellbeingCases: d.wellbeingCases.map((x) => (x.id === caseId ? { ...x, status: 'closed', closedAt: now(), closeReason: reason } : x)) }),
+          wbAudit(c?.studentId, 'wellbeing.closed', `Wellbeing plan closed: ${reason}`))
       },
       voidComm: (id, reason) => {
         mutate((d) => ({ ...d, comms: d.comms.map((c) => (c.id === id ? { ...c, voidedAt: now(), voidReason: reason } : c)) }), {

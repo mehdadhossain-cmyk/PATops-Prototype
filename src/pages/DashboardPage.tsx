@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CommEntry, LogContactModal, Toast } from '../components/Comms'
+import { CaseActionButtons } from '../components/Wellbeing'
+import { caseActions, casePatId, compliance, visibleCases } from '../data/wellbeing'
+import { studentName } from '../data/logic'
 import { StaffStatusBadge } from '../components/StatusBadges'
 import { Button, Card, Empty, PageHeader, Progress, Stat, cx } from '../components/ui'
 import { activeModules, campusName, CONTACT_GAP_DAYS, openFollowUps, patCommStats, courseName, fmtDate, fmtSchedule, groupStudents, intakeLabel, isProfileComplete, moduleDueDate, needsTraining, PAT_STUDENT_CAP, patGroups, patStudentCount, progressFor, trainingSummary, visibleGroups, visibleStaff } from '../data/logic'
@@ -81,6 +84,7 @@ function PatDashboard({ me }: { me: User }) {
           )}
         </Card>
         <MyGroupsCard me={me} />
+        {me.status === 'active' && <WellbeingCard me={me} />}
         {me.status === 'active' && <CallLogCard me={me} />}
         <Card title="Coming in the next steps" className="lg:col-span-2">
           <p className="text-sm text-slate-500">
@@ -236,6 +240,9 @@ function TeamDashboard({ me }: { me: User }) {
       <div className="mb-5">
         <TeamReachCard me={me} />
       </div>
+      <div className="mb-5">
+        <TeamWellbeingCard me={me} />
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="New joiners" actions={<Link to="/training-tracker" className="text-sm text-brand-600 hover:underline">Training tracker</Link>}>
@@ -299,6 +306,83 @@ function TeamReachCard({ me }: { me: User }) {
           </li>
         ))}
       </ul>
+    </Card>
+  )
+}
+
+function WellbeingCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const cases = visibleCases(db, me)
+  const actions = cases
+    .flatMap((c) => caseActions(c, db.wellbeingMeetings))
+    .filter((a) => a.kind !== 'awaiting_decision')
+    .sort((a, b) => Number(b.urgent) - Number(a.urgent) || +a.date - +b.date)
+  const comp = compliance(cases, db.wellbeingMeetings)
+  return (
+    <Card
+      title={`Wellbeing · ${comp.activePlans} student${comp.activePlans === 1 ? '' : 's'} on a plan`}
+      className="lg:col-span-2"
+      actions={<Link to="/wellbeing" className="text-sm text-brand-600 hover:underline">Open wellbeing</Link>}
+    >
+      {actions.length === 0 ? (
+        <Empty>No wellbeing actions due. ✓</Empty>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {actions.slice(0, 5).map((a, i) => {
+            const s = db.students.find((x) => x.id === a.studentId)!
+            const c = db.wellbeingCases.find((x) => x.id === a.caseId)!
+            return (
+              <li key={`${a.caseId}-${i}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                <div>
+                  <Link to={`/students/${s.id}`} className="font-medium hover:text-brand-600">{studentName(s)}</Link>
+                  <div className={cx('text-xs', a.urgent ? 'text-rose-600' : 'text-slate-500')}>{a.label}</div>
+                </div>
+                <CaseActionButtons c={c} compact />
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {actions.length > 5 && <p className="mt-2 text-xs text-slate-500">+ {actions.length - 5} more on the Wellbeing page</p>}
+    </Card>
+  )
+}
+
+function TeamWellbeingCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const cases = visibleCases(db, me)
+  const comp = compliance(cases, db.wellbeingMeetings)
+  const byPat = new Map<string, number>()
+  for (const c of cases) {
+    const urgent = caseActions(c, db.wellbeingMeetings).filter((a) => a.urgent).length
+    const pat = casePatId(db, c)
+    if (urgent && pat) byPat.set(pat, (byPat.get(pat) ?? 0) + urgent)
+  }
+  const worst = [...byPat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+  return (
+    <Card title={`Wellbeing · ${comp.activePlans} students on a plan`} actions={<Link to="/wellbeing" className="text-sm text-brand-600 hover:underline">Open wellbeing</Link>}>
+      <div className="grid gap-5 md:grid-cols-2">
+        <div>
+          <div className="mb-1 flex justify-between text-sm"><span>Fortnightly meetings held and logged</span><span className="font-medium tabular-nums">{comp.percent}%</span></div>
+          <Progress value={comp.percent} tone={comp.percent >= 85 ? 'good' : comp.percent >= 65 ? 'warn' : 'bad'} />
+          <p className="mt-2 text-xs text-slate-500">{comp.overdueMeetings} meetings not held · {comp.logsOutstanding} waiting to be logged</p>
+        </div>
+        <div>
+          <div className="mb-1 text-sm">PATs with the most urgent wellbeing actions</div>
+          {worst.length === 0 ? (
+            <p className="text-sm text-slate-500">None. ✓</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {worst.map(([id, n]) => (
+                <li key={id} className="flex justify-between">
+                  <Link to={`/staff/${id}`} className="hover:text-brand-600">{db.users.find((u) => u.id === id)?.name}</Link>
+                  <span className="text-rose-600 tabular-nums">{n}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </Card>
   )
 }

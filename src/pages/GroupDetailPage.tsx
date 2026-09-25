@@ -22,6 +22,8 @@ import {
 } from '../data/logic'
 import type { Group, User } from '../data/types'
 import { downloadCsv } from '../lib/csv'
+import { WellbeingBadge } from '../components/Wellbeing'
+import { activePlanStudentIds } from '../data/wellbeing'
 import { useDb } from '../store/db'
 
 export function GroupDetailPage() {
@@ -34,6 +36,7 @@ export function GroupDetailPage() {
   const [toast, setToast] = useState<string | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
   const lastReached = useMemo(() => lastReachedByStudent(db.comms), [db.comms])
+  const onPlan = useMemo(() => activePlanStudentIds(db), [db])
   if (!me) return null
   const g = visibleGroups(db, me).find((x) => x.id === id)
   if (!g) return <p>Group not found or not visible to you.</p>
@@ -129,7 +132,7 @@ export function GroupDetailPage() {
                         onChange={() => setSelected(selected.includes(s.id) ? selected.filter((x) => x !== s.id) : [...selected, s.id])}
                       />
                     </td>
-                    <td className="py-2.5 pr-4"><Link to={`/students/${s.id}`} className="font-medium hover:text-brand-600">{studentName(s)}</Link></td>
+                    <td className="py-2.5 pr-4"><Link to={`/students/${s.id}`} className="font-medium hover:text-brand-600">{studentName(s)}</Link>{onPlan.has(s.id) && <span className="ml-2"><WellbeingBadge /></span>}</td>
                     <td className="py-2.5 pr-4 font-mono text-xs tabular-nums">{s.ebsPersonCode}</td>
                     <td className="py-2.5 pr-4 font-mono text-xs tabular-nums">{s.uniStudentId}</td>
                     <td className="py-2.5 pr-4 whitespace-nowrap tabular-nums">{s.phone}</td>

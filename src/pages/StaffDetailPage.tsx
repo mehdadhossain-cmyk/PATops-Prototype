@@ -22,6 +22,7 @@ import {
   trainingSummary,
   visibleStaff,
 } from '../data/logic'
+import { casePatId, compliance } from '../data/wellbeing'
 import { useDb } from '../store/db'
 
 export function StaffDetailPage() {
@@ -137,6 +138,15 @@ export function StaffDetailPage() {
                   <Stat label="Announcements" value={s.announcements30} hint={`last ${CONTACT_GAP_DAYS} days`} />
                   <Stat label="Overdue follow-ups" value={s.overdueFollowUps} tone={s.overdueFollowUps ? 'bad' : 'good'} />
                 </div>
+                {(() => {
+                  const wb = compliance(db.wellbeingCases.filter((c) => casePatId(db, c) === u.id), db.wellbeingMeetings)
+                  return (
+                    <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600">
+                      <Link to="/wellbeing" className="font-medium text-brand-600 hover:underline">Wellbeing</Link>: {wb.activePlans} student{wb.activePlans === 1 ? '' : 's'} on a plan ·{' '}
+                      {wb.pastMeetings ? `${wb.percent}% of fortnightly meetings held and logged` : 'no meetings due yet'} · <span className={wb.overdueMeetings ? 'text-rose-600' : ''}>{wb.overdueMeetings} not held</span> · {wb.logsOutstanding} waiting to be logged
+                    </p>
+                  )
+                })()}
               </Card>
             )
           })()}

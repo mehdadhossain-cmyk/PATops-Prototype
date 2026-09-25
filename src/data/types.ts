@@ -221,6 +221,54 @@ export interface CommLog {
   voidReason: string
 }
 
+export type WellbeingStatus = 'form_sent' | 'submitted' | 'approved' | 'declined' | 'closed'
+
+/** Broad category only. Details stay in the wellbeing team's own system (data minimisation). */
+export type WellbeingCategory = 'health' | 'pregnancy' | 'mental_health' | 'caring' | 'bereavement' | 'disability' | 'other'
+export const WELLBEING_CATEGORY_LABEL: Record<WellbeingCategory, string> = {
+  health: 'Physical health / illness',
+  pregnancy: 'Pregnancy / maternity',
+  mental_health: 'Mental health',
+  caring: 'Caring responsibilities',
+  bereavement: 'Bereavement',
+  disability: 'Disability / long-term condition',
+  other: 'Other',
+}
+
+/** One wellbeing referral for a student, from form sent through to plan closure. */
+export interface WellbeingCase {
+  id: string
+  studentId: string
+  category: WellbeingCategory
+  status: WellbeingStatus
+  formSentAt: string
+  formSentBy: string
+  submittedAt: string | null
+  decisionAt: string | null
+  /** Who recorded the wellbeing team's decision in PATops. */
+  decisionRecordedBy: string | null
+  declineReason: string
+  /** Bi-weekly meetings are scheduled from this date (the approval date by default). */
+  planStart: string | null
+  closedAt: string | null
+  closeReason: string
+}
+
+/** A fortnightly wellbeing meeting that took place (or was attempted). */
+export interface WellbeingMeeting {
+  id: string
+  caseId: string
+  /** Which fortnight of the plan this meeting covers (0 = first). */
+  cycle: number
+  heldAt: string
+  outcome: 'held' | 'no_show'
+  /** PAT confirms the Teams meeting was recorded, as the wellbeing team requires. */
+  recorded: boolean
+  /** When the PAT confirmed the support was logged in the wellbeing team's system. */
+  loggedAt: string | null
+  recordedBy: string
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -230,6 +278,8 @@ export interface DbState {
   groups: Group[]
   students: Student[]
   comms: CommLog[]
+  wellbeingCases: WellbeingCase[]
+  wellbeingMeetings: WellbeingMeeting[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]
