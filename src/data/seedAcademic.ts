@@ -125,14 +125,21 @@ export function buildAcademicSeed(users: User[], campuses: Campus[]): AcademicSe
 
   // Two or three groups per active PAT, matching their campus, shift and work days.
   const pats = users.filter((u) => u.role === 'pat' && u.status === 'active')
-  for (const pat of pats) {
+  for (const [pi, pat] of pats.entries()) {
     const nGroups = rand() < 0.4 ? 3 : 2
     for (let k = 0; k < nGroups; k++) {
       const intake = pick(activeIntakes)
       const courseId = pick(courseForIntake[intake.id])
-      const d1 = pat.workDays[(k * 2) % pat.workDays.length]
-      const d2 = pat.workDays[(k * 2 + 1) % pat.workDays.length]
+      // Like the real timetable: the first two groups run back-to-back (morning + afternoon, or
+      // afternoon + evening) on the same two days; a third group uses two other days.
+      const base = (k < 2 ? 0 : 2) + (pi % pat.workDays.length) // rotate so busy days differ between PATs
+      const d1 = pat.workDays[base % pat.workDays.length]
+      const d2 = pat.workDays[(base + 1) % pat.workDays.length]
       const g = makeGroup(intake.id, courseId, pat.campusId!, pat.shift ?? 'morning', d1 === d2 ? [d1] : [d1, d2], pat.id)
+      if (k === 1) {
+        g.startTime = '13:30'
+        g.endTime = '17:00'
+      }
       addStudents(g, 18 + Math.floor(rand() * 20))
     }
   }

@@ -39,6 +39,7 @@ export function Layout() {
     { to: '/non-submissions', label: 'Non-submissions', icon: '✉', show: true },
     { to: '/lsa', label: 'LSAs', icon: '✍', show: true },
     { to: '/leave', label: 'Leave & cover', icon: '✈', show: true },
+    { to: '/allocation', label: 'PAT allocation', icon: '⇄', show: canViewStaff(me.role) },
     { to: '/intakes', label: 'Intakes', icon: '◷', show: canViewStaff(me.role) },
     { to: '/import', label: 'Import data', icon: '⇪', show: canManageStudents(me.role) },
     { to: '/attendance', label: 'Attendance upload', icon: '▥', show: canManageStudents(me.role) },

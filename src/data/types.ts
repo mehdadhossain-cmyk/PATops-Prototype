@@ -125,6 +125,16 @@ export interface Intake {
   status: IntakeStatus
 }
 
+/** Teaching session blocks used for allocation: morning 09-13, afternoon 13-17, evening 17-21. */
+export type Slot = 'Mor' | 'Afr' | 'Eve'
+export const SLOTS: Slot[] = ['Mor', 'Afr', 'Eve']
+export const SLOT_LABEL: Record<Slot, string> = { Mor: 'Morning', Afr: 'Afternoon', Eve: 'Evening' }
+
+export interface ClassSession {
+  day: Weekday
+  slots: Slot[]
+}
+
 /** A teaching group. Group membership is decided by other UKMC departments and imported here. */
 export interface Group {
   id: string
@@ -137,6 +147,15 @@ export interface Group {
   startTime: string // "09:00"
   endTime: string // "13:00"
   patId: string | null
+  /** Structured class sessions (from the allocation sheet). When absent they're derived from classDays and times. */
+  sessions?: ClassSession[]
+  /** The "Group Day" text exactly as it appeared on the allocation sheet. */
+  rawDays?: string
+  room?: string
+  /** Expected size before students are enrolled (from the allocation sheet). */
+  expectedStudents?: number | null
+  /** Allocation-sheet columns kept so exports match the original layout. */
+  sheet?: { university: string; course: string; cohort: string; year: string; semester: string; startingFrom: string; letter: string }
 }
 
 export type StudentStatus = 'active' | 'interrupted' | 'withdrawn'
@@ -450,6 +469,44 @@ export interface AssignedTask {
   personal: boolean
 }
 
+/** Per-PAT allocation settings (what used to live in the allocation notes tab). */
+export interface AllocationProfile {
+  userId: string
+  /** e.g. "09:00-17:00". Defaults from the PAT's shift when empty. */
+  workHours: string | null
+  availableFrom: string | null
+  maxStudents: number | null
+  minStudents: number | null
+  targetGroups: number | null
+  /** Target number of groups per university short name, e.g. { CCCU: 2, UOW: 1 }. */
+  uniTargets: Record<string, number>
+  preferredCampusIds: string[]
+  notes: string
+}
+
+export interface DraftAssignment {
+  patId: string | null
+  source: 'current' | 'manual' | 'auto'
+  locked: boolean
+  /** Why the auto-allocator chose this PAT. */
+  reason: string
+  /** Required when an admin places a group against a hard rule. */
+  overrideReason: string
+}
+
+export interface AllocationDraft {
+  id: string
+  name: string
+  groupIds: string[]
+  assignments: Record<string, DraftAssignment>
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+  status: 'draft' | 'published'
+  publishedAt: string | null
+  publishedBy: string | null
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -471,6 +528,8 @@ export interface DbState {
   leaveRequests: LeaveRequest[]
   coverSlots: CoverSlot[]
   assignedTasks: AssignedTask[]
+  allocationProfiles: AllocationProfile[]
+  allocationDrafts: AllocationDraft[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

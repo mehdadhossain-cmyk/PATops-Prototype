@@ -8,11 +8,13 @@ import { buildSubmissionsSeed } from '../data/seedSubmissions'
 import { buildLsaSeed } from '../data/seedLsa'
 import { buildLeaveSeed } from '../data/seedLeave'
 import { buildTasksSeed } from '../data/seedTasks'
+import { buildAllocationSeed } from '../data/seedAllocation'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
 import type { RetentionStage } from '../data/types'
 import type { AttendanceRow, LsaRow, NonSubmissionRow } from '../data/importer'
-import type { AssignedTask, CoverSlot, LeaveRequest, LeaveType, Lsa } from '../data/types'
+import type { AllocationDraft, AllocationProfile, AssignedTask, CoverSlot, LeaveRequest, LeaveType, Lsa } from '../data/types'
+import type { Suggestion } from '../data/allocation'
 import { statusAfterCover } from '../data/leave'
 import type { FollowUpStatus, NonSubmission, SubmissionPeriod } from '../data/types'
 import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User, WellbeingCase, WellbeingCategory } from '../data/types'
@@ -51,6 +53,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 7) next = { ...next, ...buildLeaveSeed(next.users, next.groups), version: 8 }
   // v8 -> v9: add assigned tasks.
   if (next.version === 8) next = { ...next, ...buildTasksSeed(next.users), version: 9 }
+  // v9 -> v10: add allocation settings and the January 2027 draft (also tidies demo timetable clashes).
+  if (next.version === 9) next = { ...next, ...buildAllocationSeed(next.users, next.groups, next.campuses), version: 10 }
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -123,6 +127,15 @@ interface DbContextValue {
   savePeriod: (p: SubmissionPeriod) => void
   importNonSubmissions: (periodId: string, rows: NonSubmissionRow[], source: string) => void
   recordAuditExport: (userId: string, format: string, range: string) => void
+  saveAllocationProfile: (p: AllocationProfile) => void
+  createDraft: (name: string, groupIds: string[]) => string
+  deleteDraft: (draftId: string) => void
+  setDraftAssignment: (draftId: string, groupId: string, patId: string | null, overrideReason?: string) => void
+  toggleDraftLock: (draftId: string, groupId: string) => void
+  applySuggestions: (draftId: string, suggestions: Suggestion[]) => void
+  clearSuggestions: (draftId: string) => void
+  publishDraft: (draftId: string) => void
+  applyAllocationImport: (input: { groups: Group[]; newUniversities: University[]; newCourses: Course[]; newIntakes: Intake[]; draftName: string | null; profiles: AllocationProfile[]; userPatches: { id: string; patch: Partial<User> }[]; source: string }) => string | null
   createTask: (input: { title: string; description: string; dueDate: string | null; assigneeIds: string[]; personal: boolean }) => void
   toggleTaskDone: (taskId: string, done: boolean) => void
   deleteTask: (taskId: string) => void
@@ -530,6 +543,134 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
             subjectUserId: patId,
           },
         )
+      },
+      saveAllocationProfile: (p) => {
+        const u = db.users.find((x) => x.id === p.userId)
+        mutate((d) => ({ ...d, allocationProfiles: [...d.allocationProfiles.filter((x) => x.userId !== p.userId), p] }), {
+          type: 'allocation.profile', message: `Updated allocation settings for ${u?.name}`, subjectUserId: p.userId,
+        })
+      },
+      createDraft: (name, groupIds) => {
+        const t = now()
+        const draft: AllocationDraft = {
+          id: uid('ad'), name, groupIds, createdBy: me?.id ?? '', createdAt: t, updatedAt: t, status: 'draft', publishedAt: null, publishedBy: null,
+          assignments: Object.fromEntries(groupIds.map((id) => [id, { patId: db.groups.find((g) => g.id === id)?.patId ?? null, source: 'current' as const, locked: false, reason: '', overrideReason: '' }])),
+        }
+        mutate((d) => ({ ...d, allocationDrafts: [...d.allocationDrafts, draft] }), { type: 'allocation.draft', message: `Started allocation draft "${name}" (${groupIds.length} groups)`, subjectUserId: null })
+        return draft.id
+      },
+      deleteDraft: (draftId) => {
+        const dr = db.allocationDrafts.find((x) => x.id === draftId)
+        mutate((d) => ({ ...d, allocationDrafts: d.allocationDrafts.filter((x) => x.id !== draftId) }), { type: 'allocation.draft', message: `Deleted allocation draft "${dr?.name}"`, subjectUserId: null })
+      },
+      setDraftAssignment: (draftId, groupId, patId, overrideReason = '') => {
+        // Draft edits aren't audited one by one; publishing records every change.
+        setDb((d) => ({
+          ...d,
+          allocationDrafts: d.allocationDrafts.map((dr) =>
+            dr.id !== draftId ? dr : {
+              ...dr,
+              updatedAt: now(),
+              groupIds: dr.groupIds.includes(groupId) ? dr.groupIds : [...dr.groupIds, groupId],
+              assignments: { ...dr.assignments, [groupId]: { patId, source: 'manual', locked: dr.assignments[groupId]?.locked ?? false, reason: '', overrideReason } },
+            },
+          ),
+        }))
+      },
+      toggleDraftLock: (draftId, groupId) => {
+        setDb((d) => ({
+          ...d,
+          allocationDrafts: d.allocationDrafts.map((dr) => {
+            if (dr.id !== draftId) return dr
+            const a = dr.assignments[groupId] ?? { patId: null, source: 'current' as const, locked: false, reason: '', overrideReason: '' }
+            return { ...dr, updatedAt: now(), assignments: { ...dr.assignments, [groupId]: { ...a, locked: !a.locked } } }
+          }),
+        }))
+      },
+      applySuggestions: (draftId, suggestions) => {
+        setDb((d) => ({
+          ...d,
+          allocationDrafts: d.allocationDrafts.map((dr) => {
+            if (dr.id !== draftId) return dr
+            const assignments = { ...dr.assignments }
+            for (const s of suggestions) {
+              const a = assignments[s.groupId]
+              if (a?.locked) continue
+              assignments[s.groupId] = { patId: s.patId, source: s.patId ? 'auto' : (a?.source ?? 'current'), locked: false, reason: s.reason, overrideReason: '' }
+            }
+            return { ...dr, updatedAt: now(), assignments }
+          }),
+        }))
+      },
+      clearSuggestions: (draftId) => {
+        setDb((d) => ({
+          ...d,
+          allocationDrafts: d.allocationDrafts.map((dr) =>
+            dr.id !== draftId ? dr : {
+              ...dr,
+              updatedAt: now(),
+              assignments: Object.fromEntries(Object.entries(dr.assignments).map(([gid, a]) => [gid, a.source === 'auto' && !a.locked ? { ...a, patId: d.groups.find((g) => g.id === gid)?.patId ?? null, source: 'current', reason: '' } : a])),
+            },
+          ),
+        }))
+      },
+      publishDraft: (draftId) => {
+        const dr = db.allocationDrafts.find((x) => x.id === draftId)
+        if (!dr || !me) return
+        const t = now()
+        const changes = dr.groupIds
+          .map((gid) => ({ g: db.groups.find((x) => x.id === gid)!, to: dr.assignments[gid]?.patId ?? null }))
+          .filter(({ g, to }) => g && g.patId !== to)
+        const name = (id: string | null) => db.users.find((u) => u.id === id)?.name ?? 'nobody'
+        const events = changes.flatMap(({ g, to }) => [
+          ...(to ? [{ id: uid('ev'), at: t, actorId: me.id, subjectUserId: to, type: 'group.assigned', message: `Allocated ${g.code} (was ${name(g.patId)}) in "${dr.name}"${dr.assignments[g.id]?.overrideReason ? `; rule override: ${dr.assignments[g.id].overrideReason}` : ''}` }] : []),
+          ...(g.patId ? [{ id: uid('ev'), at: t, actorId: me.id, subjectUserId: g.patId, type: 'group.unassigned', message: `${g.code} moved to ${name(to)} in "${dr.name}"` }] : []),
+        ])
+        const gained = new Map<string, string[]>()
+        for (const { g, to } of changes) if (to) gained.set(to, [...(gained.get(to) ?? []), g.code])
+        const tasks: AssignedTask[] = [...gained.entries()].map(([pid, codes]) => ({
+          id: uid('at'), title: `New group${codes.length > 1 ? 's' : ''} allocated: ${codes.join(', ')}`, description: `From "${dr.name}". Check the timetable and contact your new students.`,
+          dueDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), createdBy: me.id, createdAt: t, assigneeIds: [pid], completions: [], personal: false,
+        }))
+        const byId = new Map(changes.map(({ g, to }) => [g.id, to]))
+        setDb((d) => ({
+          ...d,
+          groups: d.groups.map((g) => (byId.has(g.id) ? { ...g, patId: byId.get(g.id)! } : g)),
+          assignedTasks: [...d.assignedTasks, ...tasks],
+          allocationDrafts: d.allocationDrafts.map((x) => (x.id === draftId ? { ...x, status: 'published', publishedAt: t, publishedBy: me.id, updatedAt: t } : x)),
+          audit: [...d.audit, { id: uid('ev'), at: t, actorId: me.id, subjectUserId: null, type: 'allocation.published', message: `Published "${dr.name}": ${changes.length} group${changes.length === 1 ? '' : 's'} changed` }, ...events],
+        }))
+      },
+      applyAllocationImport: (input) => {
+        if (!me) return null
+        const t = now()
+        const existing = new Set(db.groups.map((g) => g.id))
+        const newGroups = input.groups.filter((g) => !existing.has(g.id))
+        const updated = new Map(input.groups.filter((g) => existing.has(g.id)).map((g) => [g.id, g]))
+        let draft: AllocationDraft | null = null
+        if (input.draftName) {
+          // Imported PAT names go into a draft, so nothing changes live until it's published.
+          draft = {
+            id: uid('ad'), name: input.draftName, groupIds: input.groups.map((g) => g.id), createdBy: me.id, createdAt: t, updatedAt: t, status: 'draft', publishedAt: null, publishedBy: null,
+            assignments: Object.fromEntries(input.groups.map((g) => [g.id, { patId: g.patId, source: 'manual' as const, locked: false, reason: 'From the imported sheet', overrideReason: '' }])),
+          }
+        }
+        const patches = new Map(input.userPatches.map((p) => [p.id, p.patch]))
+        mutate(
+          (d) => ({
+            ...d,
+            // Groups are created/updated with their current (live) PAT unchanged; the sheet's PATs sit in the draft.
+            universities: [...d.universities, ...input.newUniversities],
+            courses: [...d.courses, ...input.newCourses],
+            intakes: [...d.intakes, ...input.newIntakes],
+            groups: [...d.groups.map((g) => (updated.has(g.id) ? { ...updated.get(g.id)!, patId: g.patId } : g)), ...newGroups.map((g) => ({ ...g, patId: null }))],
+            users: d.users.map((u) => (patches.has(u.id) ? { ...u, ...patches.get(u.id) } : u)),
+            allocationProfiles: [...d.allocationProfiles.filter((p) => !input.profiles.some((x) => x.userId === p.userId)), ...input.profiles],
+            allocationDrafts: draft ? [...d.allocationDrafts, draft] : d.allocationDrafts,
+          }),
+          { type: 'allocation.imported', message: `Imported allocation sheet ${input.source}: ${newGroups.length} new groups, ${updated.size} updated, ${input.userPatches.length} PAT working patterns updated`, subjectUserId: null },
+        )
+        return draft?.id ?? null
       },
       recordAuditExport: (userId, format, range) => {
         const u = db.users.find((x) => x.id === userId)

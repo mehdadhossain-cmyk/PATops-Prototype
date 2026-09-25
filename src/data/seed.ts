@@ -17,8 +17,9 @@ import { buildSubmissionsSeed } from './seedSubmissions'
 import { buildLsaSeed } from './seedLsa'
 import { buildLeaveSeed } from './seedLeave'
 import { buildTasksSeed } from './seedTasks'
+import { buildAllocationSeed } from './seedAllocation'
 
-export const DB_VERSION = 9
+export const DB_VERSION = 10
 
 const day = 24 * 60 * 60 * 1000
 const daysAgo = (n: number) => new Date(Date.now() - n * day).toISOString()
@@ -101,7 +102,10 @@ function buildUsers(): User[] {
         makeUser(`u-pat-${idx}`, 'pat', c.id, {
           startDaysAgo: 400 - idx * 9,
           shift: evening ? 'evening' : 'morning',
-          workDays: evening ? ['Mon', 'Tue', 'Wed', 'Thu'] : ['Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+          // Varied patterns, as on the real allocation sheet (days off differ between PATs).
+          workDays: evening
+            ? idx % 4 < 2 ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] : ['Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            : idx % 3 === 0 ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] : idx % 3 === 1 ? ['Tue', 'Wed', 'Thu', 'Fri', 'Sat'] : ['Mon', 'Tue', 'Wed', 'Fri', 'Sat'],
         }),
       )
     }
@@ -302,17 +306,22 @@ export function buildSeed(): DbState {
   nameCursor = 0
   const users = buildUsers()
   const academic = buildAcademicSeed(users, seedCampuses)
+  const allocation = buildAllocationSeed(users, academic.groups, seedCampuses)
+  const groups = allocation.groups
   return {
     version: DB_VERSION,
     campuses: seedCampuses,
     ...academic,
-    comms: buildCommsSeed(users, academic.groups, academic.students),
-    ...buildWellbeingSeed(users, academic.groups, academic.students),
-    ...buildAttendanceSeed(academic.groups, academic.students, academic.intakes),
-    ...buildSubmissionsSeed(academic.groups, academic.students),
-    ...buildLsaSeed(academic.groups, academic.students),
-    ...buildLeaveSeed(users, academic.groups),
+    groups,
+    comms: buildCommsSeed(users, groups, academic.students),
+    ...buildWellbeingSeed(users, groups, academic.students),
+    ...buildAttendanceSeed(groups, academic.students, academic.intakes),
+    ...buildSubmissionsSeed(groups, academic.students),
+    ...buildLsaSeed(groups, academic.students),
+    ...buildLeaveSeed(users, groups),
     ...buildTasksSeed(users),
+    allocationProfiles: allocation.allocationProfiles,
+    allocationDrafts: allocation.allocationDrafts,
     users,
     trainingModules: seedModules,
     trainingProgress: buildProgress(users),

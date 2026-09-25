@@ -23,8 +23,6 @@ The sign-in screen lets you pick any seeded user to see the app from their point
 
 ## Build plan (step by step)
 
-PAT allocation is intentionally out of scope for this prototype.
-
 | Step | Feature | Status |
 |---|---|---|
 | 1 | Foundation: roles, campuses, staff accounts, profiles, activity log | ✅ Done |
@@ -38,6 +36,7 @@ PAT allocation is intentionally out of scope for this prototype.
 | 8 | **Leave requests**: dates → cover PATs accept → Lead → Manager | ✅ Done |
 | 9 | **Unified task list** with due dates, plus assigned tasks | ✅ Done |
 | 10 | **One-click audit export** of a PAT's full history (report + spreadsheet) | ✅ Done |
+| 11 | **PAT allocation**: sheet import, drag-and-drop board with live rule checks, auto-allocate, drafts and publish | ✅ Done |
 
 ## Step 1: what you can test
 
@@ -239,6 +238,41 @@ These tasks **clear themselves** when the real work is done, so there's nothing 
 
 The CSV export buttons across the app (and these exports) also work inside the hosted demo page, via its download feature.
 
+## Step 11: PAT allocation
+
+Open **PAT allocation** in the menu (Admins, Leads and the Manager).
+
+**Import the allocation sheet as it arrives:** one tab per campus, with the columns Partner University, Course, Cohort, Year, Group, No. of Stu, Group Day, Campus, Room, PAT, Working Hours and Day Off. **Try the example sheet** shows it on demo data. The importer:
+- **reads the free-text Group Day** ("Mon Eve/Tues Evening", "Monday Full Day/Tuesday Morning", "Wednesday(9am-12.30)/Saturday Full", "Friday (14:30 - 21:00) and Saturday (13:30 - 17:30)", and typos like "Thurday") into days and sessions. It read all 460 entries in the real 2026 workbook;
+- **matches values to existing records:** campuses (including "Newcastel"), universities ("UoW"/"UOW"), courses ("BM", "HSC", "PSY") and PAT names (first names allowed). New universities, courses and intakes are created;
+- **reads each PAT's working hours and days off** into their profile once, instead of on every row;
+- **flags only what needs a person:** unknown campus, unmatched PAT, unreadable days, the same group on two tabs with different PATs. Tabs like "Previous…" start unticked;
+- **stages the sheet's PATs in a draft**, so nothing changes live until you publish.
+
+**The board**
+- **Left:** unallocated groups, each showing its sessions, students, the original sheet text, and why it couldn't be placed.
+- **Right:** one lane per PAT, showing campus, hours, days off, a student load bar out of 200, a Mon–Sun × morning/afternoon/evening grid, and their groups.
+- **Drag a group** (or click it, then "Place here", which works on phones). Every lane turns **green** (fits), **amber** (warnings) or **red** (blocked, with reasons), and the grid previews where the group lands. Lanes stay put while you drag.
+- **Hard rules:**
+  - class times inside working hours, on working days (morning PATs 09:00–17:00 cover morning and afternoon; evening PATs 13:00–21:00 cover afternoon and evening);
+  - no clash with the PAT's other groups;
+  - no more than 2 groups a day;
+  - no more than 200 students;
+  - not before the PAT's start date.
+
+  Breaking one needs an **override reason**, which is recorded when published.
+- **Soft rules:** another campus (unless allowed), university mix targets ("CCCU 2, UOW 1"), target group count, unknown student count, still in training.
+- **⚡ Auto-allocate** places the hardest groups first, never breaks a hard rule, balances load, prefers the same campus, university and course, and swaps pairs of groups to improve the result. Suggestions show as dashed "auto" chips with the reason. **🔒 Lock** keeps a group where it is. Groups nobody can take show the reason, e.g. *"7 PATs work Mon evening, Tue evening (1 at this campus), but none can take it: already teaching on Mon evening (5)"*.
+- **Changes vs live**, **Export sheet (.xlsx)** (one tab per campus in the original columns), and **Publish**: this updates the groups, gives each affected PAT a task, and records every change in the audit trail.
+
+**Allocation settings per PAT** (on the staff page) replace the notes tab: working hours, available from, target groups, minimum and maximum students, university mix, other campuses they can work at, and notes.
+
+**Assumptions to confirm:**
+- Session times: morning 09:00–13:00, afternoon 13:00–17:00, evening 17:00–21:00.
+- "Tuesday/Wednesday Mor" means both mornings, and a bare day ("Tuesday") means a full day.
+- The student count comes from the sheet, then from live student records, then is flagged as unknown.
+- Admins can override a hard rule, but only with a reason.
+
 ## Code layout
 
 ```
@@ -263,6 +297,11 @@ src/data/audit.ts         audit pack sections for one person (+ tests)
 src/lib/auditExport.ts    audit pack → .xlsx workbook and standalone HTML report
 src/lib/xlsx.ts           small .xlsx writer (fflate)
 src/lib/download.ts       file saving (works in the hosted demo and normal browsers)
+src/data/allocation.ts    allocation rules, Group Day/hours parsing, auto-allocation (+ tests)
+src/data/allocationImport.ts  allocation workbook → groups, PAT patterns, draft
+src/data/allocationSheets.ts  example workbook and draft export (sheet layout)
+src/components/AllocationBoard.tsx  drag-and-drop board
+src/lib/xlsxRead.ts       small .xlsx reader
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited

@@ -26,6 +26,7 @@ import { casePatId, compliance } from '../data/wellbeing'
 import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
 import { openPeriods, progress, visibleNonSubmissions } from '../data/submissions'
 import { lsaStatus, visibleLsas } from '../data/lsa'
+import { AllocationSettings } from '../components/AllocationSettings'
 import { useDb } from '../store/db'
 
 export function StaffDetailPage() {
@@ -184,6 +185,7 @@ export function StaffDetailPage() {
               </Card>
             )
           })()}
+          {u.role === 'pat' && <AllocationSettings user={u} editable={manage} />}
           {u.role === 'pat' && (
             <Card title={`Groups · ${patStudentCount(db, u.id)} / ${PAT_STUDENT_CAP} students`}>
               {patGroups(db, u.id).length === 0 ? (
