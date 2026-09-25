@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { CommEntry, LogContactModal, Toast } from '../components/Comms'
 import { CaseDetail, SendFormModal, WellbeingBadge } from '../components/Wellbeing'
+import { RetentionPanel } from '../components/Risk'
 import { Link, useParams } from 'react-router-dom'
 import { StudentStatusBadge } from '../components/StatusBadges'
 import { Button, Card, CopyButton, Empty, Field, Input, PageHeader, Select, Tabs } from '../components/ui'
@@ -57,6 +58,7 @@ export function StudentDetailPage() {
               <p className="text-sm text-slate-500">Not in a group.</p>
             )}
           </Card>
+          <RetentionPanel studentId={s.id} />
           <WellbeingPanel studentId={s.id} />
           <ContactHistory studentId={s.id} />
         </div>

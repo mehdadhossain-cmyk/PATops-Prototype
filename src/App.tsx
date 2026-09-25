@@ -13,6 +13,8 @@ import { TrainingAdminPage } from './pages/TrainingAdminPage'
 import { TrainingTrackerPage } from './pages/TrainingTrackerPage'
 import { CallLogPage } from './pages/CallLogPage'
 import { WellbeingPage } from './pages/WellbeingPage'
+import { AtRiskPage } from './pages/AtRiskPage'
+import { AttendancePage } from './pages/AttendancePage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { ImportPage } from './pages/ImportPage'
@@ -45,6 +47,8 @@ function AppRoutes() {
         <Route path="students" element={<StudentsPage />} />
         <Route path="call-log" element={<CallLogPage />} />
         <Route path="wellbeing" element={<WellbeingPage />} />
+        <Route path="at-risk" element={<AtRiskPage />} />
+        {canManageStudents(me.role) && <Route path="attendance" element={<AttendancePage />} />}
         <Route path="students/:id" element={<StudentDetailPage />} />
         {staff && <Route path="intakes" element={<IntakesPage />} />}
         {canManageStudents(me.role) && <Route path="import" element={<ImportPage />} />}

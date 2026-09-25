@@ -23,6 +23,7 @@ import {
   visibleStaff,
 } from '../data/logic'
 import { casePatId, compliance } from '../data/wellbeing'
+import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
 import { useDb } from '../store/db'
 
 export function StaffDetailPage() {
@@ -138,6 +139,15 @@ export function StaffDetailPage() {
                   <Stat label="Announcements" value={s.announcements30} hint={`last ${CONTACT_GAP_DAYS} days`} />
                   <Stat label="Overdue follow-ups" value={s.overdueFollowUps} tone={s.overdueFollowUps ? 'bad' : 'good'} />
                 </div>
+                {(() => {
+                  const { atRisk } = riskRows(db, u)
+                  return (
+                    <p className="mt-4 border-t border-slate-100 pt-3 text-sm text-slate-600">
+                      <Link to="/at-risk" className="font-medium text-brand-600 hover:underline">At risk</Link>: {atRisk.length} students below {RISK_THRESHOLD}% ·{' '}
+                      <span className={atRisk.some((r) => r.noRecentAction) ? 'text-rose-600' : ''}>{atRisk.filter((r) => r.noRecentAction).length} with no action in {NO_ACTION_DAYS} days</span>
+                    </p>
+                  )
+                })()}
                 {(() => {
                   const wb = compliance(db.wellbeingCases.filter((c) => casePatId(db, c) === u.id), db.wellbeingMeetings)
                   return (

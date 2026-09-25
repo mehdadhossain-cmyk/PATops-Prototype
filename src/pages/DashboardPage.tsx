@@ -2,6 +2,9 @@ import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CommEntry, LogContactModal, Toast } from '../components/Comms'
 import { CaseActionButtons } from '../components/Wellbeing'
+import { Sparkline } from '../components/AttendanceChart'
+import { AttendanceValue, StageBadge } from '../components/Risk'
+import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
 import { caseActions, casePatId, compliance, visibleCases } from '../data/wellbeing'
 import { studentName } from '../data/logic'
 import { StaffStatusBadge } from '../components/StatusBadges'
@@ -84,6 +87,7 @@ function PatDashboard({ me }: { me: User }) {
           )}
         </Card>
         <MyGroupsCard me={me} />
+        {me.status === 'active' && <AtRiskCard me={me} />}
         {me.status === 'active' && <WellbeingCard me={me} />}
         {me.status === 'active' && <CallLogCard me={me} />}
         <Card title="Coming in the next steps" className="lg:col-span-2">
@@ -241,6 +245,9 @@ function TeamDashboard({ me }: { me: User }) {
         <TeamReachCard me={me} />
       </div>
       <div className="mb-5">
+        <TeamAtRiskCard me={me} />
+      </div>
+      <div className="mb-5">
         <TeamWellbeingCard me={me} />
       </div>
 
@@ -383,6 +390,84 @@ function TeamWellbeingCard({ me }: { me: User }) {
           )}
         </div>
       </div>
+    </Card>
+  )
+}
+
+function AtRiskCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const { atRisk } = riskRows(db, me)
+  const newly = atRisk.filter((r) => r.att.newlyAtRisk).length
+  const stale = atRisk.filter((r) => r.noRecentAction).length
+  const top = [...atRisk].sort((a, b) => Number(b.noRecentAction) - Number(a.noRecentAction) || (a.att.current ?? 0) - (b.att.current ?? 0)).slice(0, 6)
+  return (
+    <Card
+      title={`At-risk students · ${atRisk.length} below ${RISK_THRESHOLD}%`}
+      className="lg:col-span-2"
+      actions={<Link to="/at-risk" className="text-sm text-brand-600 hover:underline">All at-risk students</Link>}
+    >
+      <p className="mb-3 text-sm text-slate-600">
+        <span className="font-medium text-amber-700">{newly} newly at risk</span> this week ·{' '}
+        <span className={cx(stale > 0 && 'font-medium text-rose-600')}>{stale} with no action in {NO_ACTION_DAYS} days</span>
+      </p>
+      {top.length === 0 ? (
+        <Empty>None of your students are below {RISK_THRESHOLD}%. ✓</Empty>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {top.map((r) => (
+            <li key={r.student.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+              <Link to={`/students/${r.student.id}`} className="w-44 truncate font-medium hover:text-brand-600">{studentName(r.student)}</Link>
+              <AttendanceValue value={r.att.current} change={r.att.change} />
+              <Sparkline history={r.att.history} />
+              <StageBadge stage={r.stage} />
+              {r.noRecentAction && <span className="text-xs text-rose-600">No action in {NO_ACTION_DAYS}+ days</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
+function TeamAtRiskCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const { atRisk } = riskRows(db, me)
+  const campuses = me.role === 'lead' ? db.campuses.filter((c) => c.id === me.campusId) : db.campuses
+  const campusOf = new Map(db.groups.map((g) => [g.id, g.campusId]))
+  const activeByCampus = new Map<string, number>()
+  for (const s of db.students) if (s.status === 'active') activeByCampus.set(campusOf.get(s.groupId) ?? '', (activeByCampus.get(campusOf.get(s.groupId) ?? '') ?? 0) + 1)
+  return (
+    <Card title={`At-risk students · ${atRisk.length} below ${RISK_THRESHOLD}%`} actions={<Link to="/at-risk" className="text-sm text-brand-600 hover:underline">All at-risk students</Link>}>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-slate-100">
+              <th className="py-2 pr-4">Campus</th>
+              <th className="py-2 pr-4 text-right">At risk</th>
+              <th className="py-2 pr-4 w-48">Share of active students</th>
+              <th className="py-2 pr-4 text-right">Newly at risk</th>
+              <th className="py-2 pr-4 text-right">No action {NO_ACTION_DAYS}d</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {campuses.map((c) => {
+              const rows = atRisk.filter((r) => campusOf.get(r.student.groupId) === c.id)
+              const active = activeByCampus.get(c.id) ?? 0
+              const pct = active ? Math.round((rows.length / active) * 100) : 0
+              return (
+                <tr key={c.id}>
+                  <td className="py-2 pr-4">{c.name}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums">{rows.length}</td>
+                  <td className="py-2 pr-4"><div className="flex items-center gap-2"><div className="flex-1"><Progress value={pct * 4} tone={pct >= 20 ? 'bad' : pct >= 12 ? 'warn' : 'good'} /></div><span className="w-9 text-right text-xs tabular-nums text-slate-500">{pct}%</span></div></td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-amber-700">{rows.filter((r) => r.att.newlyAtRisk).length}</td>
+                  <td className={cx('py-2 pr-4 text-right tabular-nums', rows.some((r) => r.noRecentAction) && 'font-medium text-rose-600')}>{rows.filter((r) => r.noRecentAction).length}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">The bar is scaled so a full bar means 25% of active students are at risk.</p>
     </Card>
   )
 }

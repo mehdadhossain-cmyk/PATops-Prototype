@@ -32,8 +32,8 @@ PAT allocation is intentionally out of scope for this prototype.
 | 2 | **Intakes, partner universities, groups & student records** (admin import) | ✅ Done |
 | 3 | **Call / communication log** (replaces the call-log Excel) | ✅ Done |
 | 4 | **Wellbeing plans**: bi-weekly meeting & "logged in wellbeing app" tracking | ✅ Done |
-| 5 | Weekly attendance import & at-risk students (<65%) with PAT + admin comment history | ⏳ Next |
-| 6 | Non-submission tracking per submission period | ⏳ |
+| 5 | **Weekly attendance import & at-risk students** (<65%) with PAT + admin comment history | ✅ Done |
+| 6 | Non-submission tracking per submission period | ⏳ Next |
 | 7 | LSA tracking | ⏳ |
 | 8 | Leave requests: dates → cover PATs accept → Lead → Manager | ⏳ |
 | 9 | Unified PAT dashboard / task list with due dates | ⏳ |
@@ -123,6 +123,34 @@ The wellbeing process: **form sent → form returned → wellbeing team decision
 - A **By PAT** table, sorted with the lowest compliance first. The dashboard shows the PATs with the most urgent wellbeing actions.
 - Every wellbeing step goes into the PAT's activity history (for the audit export).
 
+## Step 5: what you can test
+
+**PAT Admin / Manager: Attendance upload**
+- Choose the week ending date, then upload the weekly report as a CSV or paste it from Excel. Only an identifier (EBS person code or uni student ID) and the overall attendance % are needed; other columns are ignored. 72, 72% and 0.72 all work.
+- The preview flags:
+  - students who **fall below 65%** or come **back above 65%** compared with the previous week;
+  - large changes, and first reports that start below 65%;
+  - unknown students and duplicate rows;
+  - how many active students are missing from the file.
+- Re-uploading a week replaces that week's figures. **Load example data** builds a realistic report for this week.
+- Upload history shows each week, how many students it covered, and how many were below 65%.
+
+**Everyone: At-risk students** (PATs see their own students, Leads their campus)
+- Every active student below 65% is listed with:
+  - current attendance and the change since last week;
+  - a 10-week trend line and the number of consecutive weeks below 65%;
+  - their retention stage and last action.
+
+  Filters: newly at risk, no action in 14 days, campus, intake, stage. The list can be exported to CSV.
+- **Back above 65%** lists students who recovered but whose retention case is still open, so an admin can confirm and resolve it.
+
+**Student page: Attendance and retention**
+- A weekly attendance chart (by teaching week of the student's intake) with the 65% line, hover details and a table view.
+- **One shared retention history** of PAT and admin notes, merged with attendance, wellbeing and assessment contacts from the call log. This is the record used for keep-or-withdraw decisions.
+- Adding a note can move the student through the stages: newly flagged → PAT contacted → admin reviewing → action plan agreed → withdrawal recommended → resolved/kept or withdrawn. Only Admins and the Manager can record **resolved** or **withdrawn**. Withdrawn also marks the student as withdrawn everywhere.
+
+Dashboards show each PAT's at-risk students and, for staff, an at-risk breakdown by campus.
+
 ## Code layout
 
 ```
@@ -133,6 +161,9 @@ src/data/importer.ts      CSV / Excel-paste parsing and row validation (+ tests)
 src/data/seedComms.ts     ~8 weeks of demo call-log history
 src/data/wellbeing.ts     wellbeing plan rules: fortnight schedule, overdue logic, compliance (+ tests)
 src/data/seedWellbeing.ts demo referrals, plans and meetings
+src/data/risk.ts          attendance summary, at-risk and retention-stage rules (+ tests)
+src/data/seedAttendance.ts 10 weeks of demo attendance and retention notes
+src/components/AttendanceChart.tsx  weekly attendance chart and sparkline
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited

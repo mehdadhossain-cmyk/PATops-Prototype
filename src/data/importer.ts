@@ -250,3 +250,75 @@ export function previewGroups(db: DbState, intakeId: string, text: string): Prev
   })
   return { missingColumns: [], rows }
 }
+
+// ---- Weekly attendance ----------------------------------------------------------
+
+type AttKey = 'ebs' | 'uniId' | 'pct'
+
+export const attendanceColumns: ColumnSpec<AttKey>[] = [
+  { key: 'ebs', label: 'EBS Person Code', aliases: ['person code', 'ebs code', 'ebs'], required: false },
+  { key: 'uniId', label: 'Uni Student ID', aliases: ['student id', 'university id', 'uni id'], required: false },
+  { key: 'pct', label: 'Attendance %', aliases: ['attendance', 'overall attendance', 'overall', 'attendance percentage', '%'], required: true },
+]
+
+export const attendanceTemplate = 'EBS Person Code,Attendance %\n3000011,82%\n3000022,61.5%'
+
+/** Accepts "72", "72%", "72.5 %" or an Excel fraction like "0.72". */
+export function parsePercent(raw: string): number | null {
+  const t = raw.replace('%', '').trim()
+  if (!t || !/^\d+(\.\d+)?$/.test(t)) return null
+  let n = Number(t)
+  if (n <= 1 && t.includes('.') && !raw.includes('%')) n = n * 100
+  if (n < 0 || n > 100) return null
+  return Math.round(n * 10) / 10
+}
+
+export interface AttendanceRow {
+  studentId: string
+  overall: number
+}
+
+export function previewAttendance(db: DbState, text: string, threshold: number, weekEnding: string): Preview<AttendanceRow> {
+  const table = parseTable(text)
+  if (table.length === 0) return { missingColumns: [], rows: [] }
+  const { idx, missing } = mapColumns(table[0], attendanceColumns)
+  if (idx.ebs < 0 && idx.uniId < 0) missing.push('EBS Person Code or Uni Student ID')
+  if (missing.length) return { missingColumns: missing, rows: [] }
+
+  const byEbs = new Map(db.students.map((s) => [s.ebsPersonCode, s]))
+  const byUni = new Map(db.students.map((s) => [s.uniStudentId.toLowerCase(), s]))
+  // Compare with each student's most recent figure *before* this week (so re-uploads compare correctly).
+  const latest = new Map<string, { week: string; overall: number }>()
+  for (const r of db.attendance) {
+    if (r.weekEnding >= weekEnding) continue
+    const prev = latest.get(r.studentId)
+    if (!prev || r.weekEnding > prev.week) latest.set(r.studentId, { week: r.weekEnding, overall: r.overall })
+  }
+  const thisWeek = new Set(db.attendance.filter((r) => r.weekEnding === weekEnding).map((r) => r.studentId))
+  const seen = new Set<string>()
+
+  const rows = table.slice(1).map((r, i): PreviewRow<AttendanceRow> => {
+    const get = (k: AttKey) => (idx[k] >= 0 ? (r[idx[k]] ?? '') : '')
+    const errors: string[] = []
+    const warnings: string[] = []
+    const s = (get('ebs') && byEbs.get(get('ebs'))) || (get('uniId') && byUni.get(get('uniId').toLowerCase())) || null
+    const label = s ? `${s.firstName} ${s.lastName}` : get('ebs') || get('uniId') || `Row ${i + 2}`
+    if (!s) errors.push('Student not found (check the EBS person code / uni ID)')
+    else if (seen.has(s.id)) errors.push('Student appears twice in this file')
+    const pct = parsePercent(get('pct'))
+    if (pct === null) errors.push(`"${get('pct')}" is not a valid percentage`)
+    if (s) seen.add(s.id)
+    if (errors.length) return { rowNo: i + 2, data: null, action: 'skip', errors, warnings, label }
+
+    if (s!.status !== 'active') warnings.push(`Student is ${s!.status}`)
+    const before = latest.get(s!.id)?.overall
+    if (before !== undefined) {
+      if (before >= threshold && pct! < threshold) warnings.push(`Falls below ${threshold}% (was ${before}%)`)
+      else if (before < threshold && pct! >= threshold) warnings.push(`Back above ${threshold}% (was ${before}%)`)
+      else if (Math.abs(pct! - before) >= 15) warnings.push(`Large change from ${before}%`)
+    } else if (pct! < threshold) warnings.push(`Below ${threshold}% in first report`)
+    if (thisWeek.has(s!.id)) warnings.push('Replaces the figure already uploaded for this week')
+    return { rowNo: i + 2, data: { studentId: s!.id, overall: pct! }, action: thisWeek.has(s!.id) ? 'update' : 'create', errors, warnings, label }
+  })
+  return { missingColumns: [], rows }
+}

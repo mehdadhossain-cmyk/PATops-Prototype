@@ -269,6 +269,47 @@ export interface WellbeingMeeting {
   recordedBy: string
 }
 
+/** One student's attendance as reported for a week (cumulative % to date, as on the weekly sheet). */
+export interface AttendanceRecord {
+  studentId: string
+  /** ISO date of the Friday/Sunday the report covers up to. */
+  weekEnding: string
+  /** Overall attendance to date, 0-100. */
+  overall: number
+}
+
+export interface AttendanceUpload {
+  id: string
+  weekEnding: string
+  uploadedAt: string
+  uploadedBy: string
+  source: string
+  rows: number
+}
+
+/** Where a student at risk is in the retention process. */
+export type RetentionStage = 'new' | 'pat_contacted' | 'admin_review' | 'action_plan' | 'withdrawal_recommended' | 'resolved' | 'withdrawn'
+export const STAGE_LABEL: Record<RetentionStage, string> = {
+  new: 'Newly flagged',
+  pat_contacted: 'PAT contacted',
+  admin_review: 'Admin reviewing',
+  action_plan: 'Action plan agreed',
+  withdrawal_recommended: 'Withdrawal recommended',
+  resolved: 'Resolved / kept',
+  withdrawn: 'Withdrawn',
+}
+
+/** Entry in an at-risk student's retention history, written by PATs and admins. */
+export interface RiskNote {
+  id: string
+  studentId: string
+  authorId: string
+  at: string
+  text: string
+  /** Set when this note moved the student to a new stage. */
+  stage: RetentionStage | null
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -280,6 +321,9 @@ export interface DbState {
   comms: CommLog[]
   wellbeingCases: WellbeingCase[]
   wellbeingMeetings: WellbeingMeeting[]
+  attendance: AttendanceRecord[]
+  attendanceUploads: AttendanceUpload[]
+  riskNotes: RiskNote[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

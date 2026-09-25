@@ -3,8 +3,11 @@ import { buildSeed, DB_VERSION } from '../data/seed'
 import { buildAcademicSeed } from '../data/seedAcademic'
 import { buildCommsSeed } from '../data/seedComms'
 import { buildWellbeingSeed } from '../data/seedWellbeing'
+import { buildAttendanceSeed } from '../data/seedAttendance'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
+import type { RetentionStage } from '../data/types'
+import type { AttendanceRow } from '../data/importer'
 import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User, WellbeingCase, WellbeingCategory } from '../data/types'
 import { nextOpenCycle } from '../data/wellbeing'
 
@@ -31,6 +34,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 2) next = { ...next, comms: buildCommsSeed(next.users, next.groups, next.students), version: 3 }
   // v3 -> v4: add wellbeing referrals and plans.
   if (next.version === 3) next = { ...next, ...buildWellbeingSeed(next.users, next.groups, next.students), version: 4 }
+  // v4 -> v5: add weekly attendance and retention notes.
+  if (next.version === 4) next = { ...next, ...buildAttendanceSeed(next.groups, next.students, next.intakes), version: 5 }
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -98,6 +103,8 @@ interface DbContextValue {
   recordMeeting: (caseId: string, m: { heldAt: string; outcome: 'held' | 'no_show'; recorded: boolean; logged: boolean; addToCallLog: boolean }) => void
   markMeetingLogged: (meetingId: string) => void
   closeCase: (caseId: string, reason: string) => void
+  importAttendance: (weekEnding: string, rows: AttendanceRow[], source: string) => void
+  addRiskNote: (studentId: string, text: string, stage: RetentionStage | null) => void
 }
 
 const DbContext = createContext<DbContextValue | null>(null)
@@ -421,6 +428,38 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
         const c = db.wellbeingCases.find((x) => x.id === caseId)
         mutate((d) => ({ ...d, wellbeingCases: d.wellbeingCases.map((x) => (x.id === caseId ? { ...x, status: 'closed', closedAt: now(), closeReason: reason } : x)) }),
           wbAudit(c?.studentId, 'wellbeing.closed', `Wellbeing plan closed: ${reason}`))
+      },
+      importAttendance: (weekEnding, rows, source) => {
+        const ids = new Set(rows.map((r) => r.studentId))
+        const upload = { id: uid('au'), weekEnding, uploadedAt: now(), uploadedBy: me?.id ?? '', source, rows: rows.length }
+        mutate(
+          (d) => ({
+            ...d,
+            // Re-uploading a week replaces that week's figures for the students in the file.
+            attendance: [...d.attendance.filter((a) => !(a.weekEnding === weekEnding && ids.has(a.studentId))), ...rows.map((r) => ({ ...r, weekEnding }))],
+            attendanceUploads: [...d.attendanceUploads.filter((u) => u.weekEnding !== weekEnding), upload],
+          }),
+          { type: 'attendance.imported', message: `Imported attendance for week ending ${weekEnding} (${rows.length} students) from ${source}`, subjectUserId: null },
+        )
+      },
+      addRiskNote: (studentId, text, stage) => {
+        if (!me) return
+        const s = db.students.find((x) => x.id === studentId)
+        const patId = db.groups.find((g) => g.id === s?.groupId)?.patId ?? null
+        const note = { id: uid('rn'), studentId, authorId: me.id, at: now(), text, stage }
+        const withdraw = stage === 'withdrawn' && (me.role === 'admin' || me.role === 'manager')
+        mutate(
+          (d) => ({
+            ...d,
+            riskNotes: [...d.riskNotes, note],
+            students: withdraw ? d.students.map((x) => (x.id === studentId ? { ...x, status: 'withdrawn' } : x)) : d.students,
+          }),
+          {
+            type: stage ? 'risk.stage' : 'risk.note',
+            message: `${stage ? `Retention stage set to "${stage.replace('_', ' ')}"` : 'Retention note added'}${s ? `: ${s.firstName} ${s.lastName}` : ''}`,
+            subjectUserId: patId,
+          },
+        )
       },
       voidComm: (id, reason) => {
         mutate((d) => ({ ...d, comms: d.comms.map((c) => (c.id === id ? { ...c, voidedAt: now(), voidReason: reason } : c)) }), {

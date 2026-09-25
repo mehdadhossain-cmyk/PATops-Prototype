@@ -23,6 +23,8 @@ import {
 import type { Group, User } from '../data/types'
 import { downloadCsv } from '../lib/csv'
 import { WellbeingBadge } from '../components/Wellbeing'
+import { AttendanceValue } from '../components/Risk'
+import { attendanceSummary } from '../data/risk'
 import { activePlanStudentIds } from '../data/wellbeing'
 import { useDb } from '../store/db'
 
@@ -117,6 +119,7 @@ export function GroupDetailPage() {
                   <th className="py-2 pr-4">Phone</th>
                   <th className="py-2 pr-4">Emails</th>
                   <th className="py-2 pr-4">Emergency contact</th>
+                  <th className="py-2 pr-4">Attendance</th>
                   <th className="py-2 pr-4">Last reached</th>
                   <th className="py-2 pr-4">Status</th>
                 </tr>
@@ -144,6 +147,7 @@ export function GroupDetailPage() {
                       <div>{s.emergencyContactName || '—'}</div>
                       <div className="tabular-nums text-slate-400">{s.emergencyContactPhone}</div>
                     </td>
+                    <td className="py-2.5 pr-4 text-sm">{(() => { const a = attendanceSummary(db, s.id); return <AttendanceValue value={a.current} change={a.change} /> })()}</td>
                     <td className="py-2.5 pr-4 text-xs whitespace-nowrap">
                       {(() => {
                         const at = lastReached.get(s.id)
