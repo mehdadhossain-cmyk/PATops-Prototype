@@ -29,6 +29,7 @@ export function Layout() {
     { to: '/at-risk', label: 'At-risk students', icon: '⚠', show: true },
     { to: '/wellbeing', label: 'Wellbeing', icon: '♥', show: true },
     { to: '/non-submissions', label: 'Non-submissions', icon: '✉', show: true },
+    { to: '/lsa', label: 'LSAs', icon: '✍', show: true },
     { to: '/intakes', label: 'Intakes', icon: '◷', show: canViewStaff(me.role) },
     { to: '/import', label: 'Import data', icon: '⇪', show: canManageStudents(me.role) },
     { to: '/attendance', label: 'Attendance upload', icon: '▥', show: canManageStudents(me.role) },
@@ -38,7 +39,7 @@ export function Layout() {
     { to: '/settings', label: 'Settings', icon: '⚑', show: me.role === 'admin' || me.role === 'manager' },
   ]
 
-  const upcoming = ['LSAs', 'Leave & cover', 'Audit export']
+  const upcoming = ['Leave & cover', 'Audit export']
 
   return (
     <div className="min-h-screen lg:flex">

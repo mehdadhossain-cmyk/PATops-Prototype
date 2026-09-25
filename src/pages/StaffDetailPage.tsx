@@ -25,6 +25,7 @@ import {
 import { casePatId, compliance } from '../data/wellbeing'
 import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
 import { openPeriods, progress, visibleNonSubmissions } from '../data/submissions'
+import { lsaStatus, visibleLsas } from '../data/lsa'
 import { useDb } from '../store/db'
 
 export function StaffDetailPage() {
@@ -140,6 +141,16 @@ export function StaffDetailPage() {
                   <Stat label="Announcements" value={s.announcements30} hint={`last ${CONTACT_GAP_DAYS} days`} />
                   <Stat label="Overdue follow-ups" value={s.overdueFollowUps} tone={s.overdueFollowUps ? 'bad' : 'good'} />
                 </div>
+                {(() => {
+                  const mine = visibleLsas(db, u)
+                  const overdue = mine.filter((l) => lsaStatus(l) === 'follow_up_overdue').length
+                  return mine.length ? (
+                    <p className="mt-3 text-sm text-slate-600">
+                      <Link to="/lsa" className="font-medium text-brand-600 hover:underline">LSAs</Link>: {mine.filter((l) => lsaStatus(l) !== 'ended').length} active ·{' '}
+                      <span className={overdue ? 'text-rose-600' : ''}>{overdue} follow-ups overdue</span>
+                    </p>
+                  ) : null
+                })()}
                 {openPeriods(db).map((p) => {
                   const prog = progress(visibleNonSubmissions(db, u, p.id), p)
                   return prog.total ? (

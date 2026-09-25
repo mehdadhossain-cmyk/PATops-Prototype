@@ -34,8 +34,8 @@ PAT allocation is intentionally out of scope for this prototype.
 | 4 | **Wellbeing plans**: bi-weekly meeting & "logged in wellbeing app" tracking | ✅ Done |
 | 5 | **Weekly attendance import & at-risk students** (<65%) with PAT + admin comment history | ✅ Done |
 | 6 | **Non-submission tracking** per submission period | ✅ Done |
-| 7 | LSA tracking | ⏳ Next |
-| 8 | Leave requests: dates → cover PATs accept → Lead → Manager | ⏳ |
+| 7 | **LSA tracking** (matches the PAT LSA records sheet) | ✅ Done |
+| 8 | Leave requests: dates → cover PATs accept → Lead → Manager | ⏳ Next |
 | 9 | Unified PAT dashboard / task list with due dates | ⏳ |
 | 10 | One-click audit export of a PAT's full history | ⏳ |
 
@@ -174,6 +174,20 @@ This replaces "one sheet per PAT plus one master sheet".
 
 A student's page lists their missed submissions in every period.
 
+## Step 7: what you can test
+
+Built on the existing **PAT LSA records sheet** (Student ID, Student Name, Campus Name, Intake, Course Name, PAT Name, LSA Start Date, LSA End Date, Next Follow up, Intake (Standardised), Comments).
+
+- **Filled in automatically** from the student record: student, campus, intake ("Jan-26" / "UOW JAN 26"), course and PAT. Nobody retypes them.
+- **PATs update** the LSA start date, end date, next follow-up and comments, from the LSAs page or the student's page. Quick buttons set the next follow-up 2, 4 or 8 weeks ahead.
+- **Every change is kept in the LSA's history**, so overwriting a comment doesn't lose the old one. Changes are also recorded in the PAT's activity history.
+- **Status**: active, follow-up due (within 7 days), follow-up overdue, or ended. Overdue items come first, and the dashboards show what's due.
+- **Admins and the Manager**:
+  - one list across all campuses;
+  - a **By PAT** view that replaces combining each PAT's sheet into a master;
+  - **Export sheet (CSV)** in exactly the original column layout and date format (M/D/YYYY);
+  - **Upload existing sheet** to bring the current sheets in as they are: blank rows are ignored, rows are matched on Student ID, and a row with the same student and start date updates the existing LSA.
+
 ## Code layout
 
 ```
@@ -189,6 +203,8 @@ src/data/seedAttendance.ts 10 weeks of demo attendance and retention notes
 src/components/AttendanceChart.tsx  weekly attendance chart and sparkline
 src/data/submissions.ts   non-submission follow-up progress rules (+ tests)
 src/data/seedSubmissions.ts demo submission periods and non-submissions
+src/data/lsa.ts           LSA status, sheet date/intake formats (+ tests)
+src/data/seedLsa.ts       demo LSAs (fake students only)
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited

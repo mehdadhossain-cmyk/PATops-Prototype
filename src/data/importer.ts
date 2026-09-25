@@ -2,6 +2,7 @@
 // Accepts CSV files or cells pasted straight from Excel (tab-separated).
 import type { DbState, Group, Shift, Student, StudentStatus, Weekday } from './types'
 import { WEEKDAYS } from './types'
+import { parseSheetDate } from './lsa'
 
 export function parseTable(text: string): string[][] {
   const firstLine = text.split(/\r?\n/, 1)[0] ?? ''
@@ -373,6 +374,78 @@ export function previewNonSubmissions(db: DbState, periodId: string, text: strin
     if (period && !period.intakeIds.includes(groupIntake.get(s!.groupId) ?? '')) warnings.push('Student is not in an intake covered by this period')
     if (s!.status !== 'active') warnings.push(`Student is ${s!.status}`)
     return { rowNo: i + 2, data: { studentId: s!.id, assessment }, action: 'create', errors, warnings, label: `${label} · ${assessment}` }
+  })
+  return { missingColumns: [], rows }
+}
+
+// ---- LSA records sheet ------------------------------------------------------------
+
+type LsaKey = 'uniId' | 'ebs' | 'name' | 'pat' | 'start' | 'end' | 'follow' | 'comments'
+
+export const lsaColumns: ColumnSpec<LsaKey>[] = [
+  { key: 'uniId', label: 'Student ID', aliases: ['uni student id', 'university id', 'uni id'], required: false },
+  { key: 'ebs', label: 'EBS Person Code', aliases: ['person code', 'ebs code'], required: false },
+  { key: 'name', label: 'Student Name', aliases: ['name'], required: false },
+  { key: 'pat', label: 'PAT Name', aliases: ['pat'], required: false },
+  { key: 'start', label: 'LSA Start Date', aliases: ['start date', 'lsa start'], required: true },
+  { key: 'end', label: 'LSA End Date', aliases: ['end date', 'lsa end'], required: false },
+  { key: 'follow', label: 'Next Follow up', aliases: ['next follow-up', 'next follow up date', 'follow up'], required: false },
+  { key: 'comments', label: 'Comments', aliases: ['comment', 'notes'], required: false },
+]
+
+export interface LsaRow {
+  studentId: string
+  startDate: string
+  endDate: string | null
+  nextFollowUp: string | null
+  comments: string
+  /** Existing LSA to update (same student and start date), if any. */
+  existingId: string | null
+}
+
+export function previewLsas(db: DbState, text: string): Preview<LsaRow> {
+  const table = parseTable(text)
+  if (table.length === 0) return { missingColumns: [], rows: [] }
+  const { idx, missing } = mapColumns(table[0], lsaColumns)
+  if (idx.uniId < 0 && idx.ebs < 0) missing.push('Student ID (uni ID) or EBS Person Code')
+  if (missing.length) return { missingColumns: missing, rows: [] }
+  const byUni = new Map(db.students.map((s) => [s.uniStudentId.toLowerCase(), s]))
+  const byEbs = new Map(db.students.map((s) => [s.ebsPersonCode, s]))
+  const seen = new Set<string>()
+
+  const rows = table.slice(1).map((r, i): PreviewRow<LsaRow> => {
+    const get = (k: LsaKey) => (idx[k] >= 0 ? (r[idx[k]] ?? '') : '')
+    const errors: string[] = []
+    const warnings: string[] = []
+    const s = (get('uniId') && byUni.get(get('uniId').toLowerCase())) || (get('ebs') && byEbs.get(get('ebs'))) || null
+    const label = s ? `${s.firstName} ${s.lastName}` : get('name') || get('uniId') || `Row ${i + 2}`
+    if (!s) errors.push('Student not found (check the Student ID)')
+    const start = parseSheetDate(get('start'))
+    const end = get('end') ? parseSheetDate(get('end')) : null
+    const follow = get('follow') ? parseSheetDate(get('follow')) : null
+    if (!start) errors.push(`Invalid or missing start date "${get('start')}" (use M/D/YYYY)`)
+    if (get('end') && !end) errors.push(`Invalid end date "${get('end')}"`)
+    if (get('follow') && !follow) errors.push(`Invalid follow-up date "${get('follow')}"`)
+    if (start && end && end < start) errors.push('End date is before the start date')
+    const key = s && start ? `${s.id}|${start}` : ''
+    if (key && seen.has(key)) errors.push('Same student and start date twice in this file')
+    if (key) seen.add(key)
+    if (errors.length) return { rowNo: i + 2, data: null, action: 'skip', errors, warnings, label }
+
+    if (s && get('name') && !`${s.firstName} ${s.lastName}`.toLowerCase().includes(get('name').toLowerCase().split(' ')[0])) warnings.push(`Name on sheet is "${get('name')}"`)
+    const patId = db.groups.find((g) => g.id === s!.groupId)?.patId
+    const patName = db.users.find((u) => u.id === patId)?.name ?? ''
+    if (get('pat') && patName && !patName.toLowerCase().includes(get('pat').toLowerCase().split(' ')[0])) warnings.push(`Sheet says PAT "${get('pat')}"; current PAT is ${patName}`)
+    if (!follow && !end) warnings.push('No next follow-up date')
+    const existing = db.lsas.find((l) => l.studentId === s!.id && l.startDate === start)
+    return {
+      rowNo: i + 2,
+      data: { studentId: s!.id, startDate: start!, endDate: end, nextFollowUp: follow, comments: get('comments'), existingId: existing?.id ?? null },
+      action: existing ? 'update' : 'create',
+      errors,
+      warnings,
+      label,
+    }
   })
   return { missingColumns: [], rows }
 }

@@ -6,6 +6,7 @@ import { Sparkline } from '../components/AttendanceChart'
 import { AttendanceValue, StageBadge } from '../components/Risk'
 import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
 import { openPeriods, progress, visibleNonSubmissions } from '../data/submissions'
+import { LSA_DUE_SOON_DAYS, lsaStatus, visibleLsas } from '../data/lsa'
 import { caseActions, casePatId, compliance, visibleCases } from '../data/wellbeing'
 import { studentName } from '../data/logic'
 import { StaffStatusBadge } from '../components/StatusBadges'
@@ -89,6 +90,7 @@ function PatDashboard({ me }: { me: User }) {
         </Card>
         <MyGroupsCard me={me} />
         {me.status === 'active' && <NonSubmissionCard me={me} />}
+        {me.status === 'active' && <LsaCard me={me} />}
         {me.status === 'active' && <AtRiskCard me={me} />}
         {me.status === 'active' && <WellbeingCard me={me} />}
         {me.status === 'active' && <CallLogCard me={me} />}
@@ -251,6 +253,9 @@ function TeamDashboard({ me }: { me: User }) {
       </div>
       <div className="mb-5">
         <TeamNonSubmissionCard me={me} />
+      </div>
+      <div className="mb-5">
+        <LsaCard me={me} />
       </div>
       <div className="mb-5">
         <TeamWellbeingCard me={me} />
@@ -529,6 +534,41 @@ function TeamNonSubmissionCard({ me }: { me: User }) {
           )
         })}
       </ul>
+    </Card>
+  )
+}
+
+function LsaCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const lsas = visibleLsas(db, me)
+  if (lsas.length === 0) return null
+  const due = lsas
+    .filter((l) => ['follow_up_overdue', 'follow_up_due'].includes(lsaStatus(l)))
+    .sort((a, b) => (a.nextFollowUp ?? '').localeCompare(b.nextFollowUp ?? ''))
+  const active = lsas.filter((l) => lsaStatus(l) !== 'ended').length
+  const overdue = due.filter((l) => lsaStatus(l) === 'follow_up_overdue').length
+  return (
+    <Card
+      title={`LSAs · ${active} active`}
+      className={me.role === 'pat' ? 'lg:col-span-2' : undefined}
+      actions={<Link to="/lsa" className="text-sm text-brand-600 hover:underline">Open LSAs</Link>}
+    >
+      <p className="mb-2 text-sm text-slate-600">
+        <span className={cx(overdue > 0 && 'font-medium text-rose-600')}>{overdue} follow-up{overdue === 1 ? '' : 's'} overdue</span> · {due.length - overdue} due in the next {LSA_DUE_SOON_DAYS} days
+      </p>
+      {me.role === 'pat' && due.length > 0 && (
+        <ul className="divide-y divide-slate-100">
+          {due.slice(0, 5).map((l) => {
+            const s = db.students.find((x) => x.id === l.studentId)!
+            return (
+              <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <Link to={`/students/${s.id}`} className="font-medium hover:text-brand-600">{studentName(s)}</Link>
+                <span className={cx('text-xs', lsaStatus(l) === 'follow_up_overdue' ? 'text-rose-600' : 'text-amber-700')}>Follow-up {fmtDate(l.nextFollowUp)}</span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </Card>
   )
 }

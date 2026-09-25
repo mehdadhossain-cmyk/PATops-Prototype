@@ -5,10 +5,12 @@ import { buildCommsSeed } from '../data/seedComms'
 import { buildWellbeingSeed } from '../data/seedWellbeing'
 import { buildAttendanceSeed } from '../data/seedAttendance'
 import { buildSubmissionsSeed } from '../data/seedSubmissions'
+import { buildLsaSeed } from '../data/seedLsa'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
 import type { RetentionStage } from '../data/types'
-import type { AttendanceRow, NonSubmissionRow } from '../data/importer'
+import type { AttendanceRow, LsaRow, NonSubmissionRow } from '../data/importer'
+import type { Lsa } from '../data/types'
 import type { FollowUpStatus, NonSubmission, SubmissionPeriod } from '../data/types'
 import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User, WellbeingCase, WellbeingCategory } from '../data/types'
 import { nextOpenCycle } from '../data/wellbeing'
@@ -40,6 +42,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 4) next = { ...next, ...buildAttendanceSeed(next.groups, next.students, next.intakes), version: 5 }
   // v5 -> v6: add submission periods and non-submissions.
   if (next.version === 5) next = { ...next, ...buildSubmissionsSeed(next.groups, next.students), version: 6 }
+  // v6 -> v7: add LSAs.
+  if (next.version === 6) next = { ...next, ...buildLsaSeed(next.groups, next.students), version: 7 }
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -111,6 +115,8 @@ interface DbContextValue {
   addRiskNote: (studentId: string, text: string, stage: RetentionStage | null) => void
   savePeriod: (p: SubmissionPeriod) => void
   importNonSubmissions: (periodId: string, rows: NonSubmissionRow[], source: string) => void
+  saveLsa: (input: { id?: string; studentId: string; startDate: string; endDate: string | null; nextFollowUp: string | null; comments: string }) => void
+  importLsas: (rows: LsaRow[], source: string) => void
   updateNonSubmission: (id: string, patch: { status: FollowUpStatus; note: string; expectedDate: string | null }, callLog: 'phone' | 'whatsapp' | 'email' | 'sms' | 'in_person' | null) => void
 }
 
@@ -508,6 +514,57 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
             message: `Non-submission follow-up: ${s ? `${s.firstName} ${s.lastName}` : ''}, ${n.assessment} → ${patch.status.replace('_', ' ')}`,
             subjectUserId: patId,
           },
+        )
+      },
+      saveLsa: (input) => {
+        if (!me) return
+        const t = now()
+        const prev = input.id ? db.lsas.find((l) => l.id === input.id) : undefined
+        const s = db.students.find((x) => x.id === input.studentId)
+        const patId = db.groups.find((g) => g.id === s?.groupId)?.patId ?? null
+        const lsa: Lsa = prev
+          ? { ...prev, ...input, id: prev.id, updatedAt: t, updatedBy: me.id }
+          : { ...input, id: uid('lsa'), createdBy: me.id, createdAt: t, updatedAt: t, updatedBy: me.id }
+        // Describe what changed, so the history keeps every version.
+        const changes: string[] = []
+        if (!prev) changes.push(`LSA signed (start ${input.startDate})`)
+        else {
+          if (prev.startDate !== lsa.startDate) changes.push(`start date ${prev.startDate} → ${lsa.startDate}`)
+          if (prev.endDate !== lsa.endDate) changes.push(`end date ${prev.endDate ?? 'none'} → ${lsa.endDate ?? 'none'}`)
+          if (prev.nextFollowUp !== lsa.nextFollowUp) changes.push(`next follow-up ${prev.nextFollowUp ?? 'none'} → ${lsa.nextFollowUp ?? 'none'}`)
+        }
+        if (lsa.comments && lsa.comments !== prev?.comments) changes.push(`Comment: ${lsa.comments}`)
+        if (changes.length === 0) return
+        const update = { id: uid('lu'), lsaId: lsa.id, at: t, by: me.id, summary: changes.join('; ') }
+        mutate(
+          (d) => ({ ...d, lsas: prev ? d.lsas.map((l) => (l.id === lsa.id ? lsa : l)) : [...d.lsas, lsa], lsaUpdates: [...d.lsaUpdates, update] }),
+          { type: prev ? 'lsa.updated' : 'lsa.created', message: `${prev ? 'LSA updated' : 'LSA signed'}${s ? `: ${s.firstName} ${s.lastName}` : ''} (${changes.join('; ')})`, subjectUserId: patId },
+        )
+      },
+      importLsas: (rows, source) => {
+        if (!me) return
+        const t = now()
+        const byId = new Map(rows.filter((r) => r.existingId).map((r) => [r.existingId!, r]))
+        const created: Lsa[] = rows
+          .filter((r) => !r.existingId)
+          .map((r) => ({ id: uid('lsa'), studentId: r.studentId, startDate: r.startDate, endDate: r.endDate, nextFollowUp: r.nextFollowUp, comments: r.comments, createdBy: me.id, createdAt: t, updatedAt: t, updatedBy: me.id }))
+        const updates = [
+          ...created.map((l) => ({ id: uid('lu'), lsaId: l.id, at: t, by: me.id, summary: `Imported from ${source}` })),
+          ...[...byId.keys()].map((id) => ({ id: uid('lu'), lsaId: id, at: t, by: me.id, summary: `Updated from ${source}` })),
+        ]
+        mutate(
+          (d) => ({
+            ...d,
+            lsas: [
+              ...d.lsas.map((l) => {
+                const r = byId.get(l.id)
+                return r ? { ...l, endDate: r.endDate, nextFollowUp: r.nextFollowUp, comments: r.comments || l.comments, updatedAt: t, updatedBy: me.id } : l
+              }),
+              ...created,
+            ],
+            lsaUpdates: [...d.lsaUpdates, ...updates],
+          }),
+          { type: 'lsa.imported', message: `Imported ${rows.length} LSA records from ${source} (${created.length} new, ${byId.size} updated)`, subjectUserId: null },
         )
       },
       voidComm: (id, reason) => {

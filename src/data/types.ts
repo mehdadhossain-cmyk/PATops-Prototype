@@ -361,6 +361,30 @@ export interface NonSubmission {
   updatedBy: string | null
 }
 
+/** A Learning Support Agreement signed between a PAT and a student (mirrors the PAT LSA records sheet). */
+export interface Lsa {
+  id: string
+  studentId: string
+  startDate: string // ISO date
+  endDate: string | null
+  nextFollowUp: string | null
+  /** Latest comment, as shown in the "Comments" column of the sheet. */
+  comments: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+  updatedBy: string
+}
+
+/** Every change to an LSA, so the history isn't lost when a comment is overwritten. */
+export interface LsaUpdate {
+  id: string
+  lsaId: string
+  at: string
+  by: string
+  summary: string
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -377,6 +401,8 @@ export interface DbState {
   riskNotes: RiskNote[]
   submissionPeriods: SubmissionPeriod[]
   nonSubmissions: NonSubmission[]
+  lsas: Lsa[]
+  lsaUpdates: LsaUpdate[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]
