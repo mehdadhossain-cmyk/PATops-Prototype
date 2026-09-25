@@ -35,8 +35,8 @@ PAT allocation is intentionally out of scope for this prototype.
 | 5 | **Weekly attendance import & at-risk students** (<65%) with PAT + admin comment history | ✅ Done |
 | 6 | **Non-submission tracking** per submission period | ✅ Done |
 | 7 | **LSA tracking** (matches the PAT LSA records sheet) | ✅ Done |
-| 8 | Leave requests: dates → cover PATs accept → Lead → Manager | ⏳ Next |
-| 9 | Unified PAT dashboard / task list with due dates | ⏳ |
+| 8 | **Leave requests**: dates → cover PATs accept → Lead → Manager | ✅ Done |
+| 9 | Unified PAT dashboard / task list with due dates | ⏳ Next |
 | 10 | One-click audit export of a PAT's full history | ⏳ |
 
 ## Step 1: what you can test
@@ -188,6 +188,21 @@ Built on the existing **PAT LSA records sheet** (Student ID, Student Name, Campu
   - **Export sheet (CSV)** in exactly the original column layout and date format (M/D/YYYY);
   - **Upload existing sheet** to bring the current sheets in as they are: blank rows are ignored, rows are matched on Student ID, and a row with the same student and start date updates the existing LSA.
 
+## Step 8: what you can test
+
+**Request leave (PAT)** in three steps:
+1. **Dates**: choose the type (annual leave, time off in lieu, medical appointment, unpaid, other), dates and reason. PATops counts your working days and finds every class session in those dates.
+2. **Covers**: for each session, choose a colleague. The list is ranked best match first: same campus, same shift, works that day, and not over 2 groups that day. Anyone on leave or teaching at the same time can't be chosen. **Suggest covers** fills every slot automatically.
+3. **Review and submit.**
+
+**Covers** see the request under **Cover requests** and on their dashboard, and **accept** or **decline** with a reason. If someone declines, the requester can **ask someone else** for that session. Accepted covers appear under "Classes you're covering" and on the group's page.
+
+**Approval**: once every cover has accepted, the request goes to the **campus PAT Lead**, then the **PAT Manager**. Leads' and admins' own leave goes straight to the Manager, and a rejection needs a note. Each request shows a step-by-step timeline of who did what and when. Requesters can cancel, which releases their covers.
+
+**Team calendar**: a six-week view of who is off, approved or still in progress, by campus.
+
+Every step is recorded in the activity history of the PAT and their covers.
+
 ## Code layout
 
 ```
@@ -205,6 +220,8 @@ src/data/submissions.ts   non-submission follow-up progress rules (+ tests)
 src/data/seedSubmissions.ts demo submission periods and non-submissions
 src/data/lsa.ts           LSA status, sheet date/intake formats (+ tests)
 src/data/seedLsa.ts       demo LSAs (fake students only)
+src/data/leave.ts         sessions to cover, cover ranking/blocks, approval chain (+ tests)
+src/data/seedLeave.ts     demo leave requests at every stage
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited

@@ -88,6 +88,7 @@ export function GroupDetailPage() {
           </dl>
         </Card>
         <PatCard group={g} me={me} />
+        <UpcomingCover groupId={g.id} />
       </div>
 
       <Card title={`Students (${students.length})`}>
@@ -245,6 +246,31 @@ function PatCard({ group: g, me }: { group: Group; me: User }) {
           {g.patId && choice !== g.patId && <p className="text-xs text-slate-500">Replacing {userName(db, g.patId)}. Both PATs' histories will record the change.</p>}
         </div>
       )}
+    </Card>
+  )
+}
+
+function UpcomingCover({ groupId }: { groupId: string }) {
+  const { db } = useDb()
+  const today = new Date().toISOString().slice(0, 10)
+  const slots = db.coverSlots
+    .filter((c) => c.groupId === groupId && c.date >= today && c.status !== 'declined' && ['awaiting_cover', 'awaiting_lead', 'awaiting_manager', 'approved'].includes(db.leaveRequests.find((r) => r.id === c.leaveId)?.status ?? ''))
+    .sort((a, b) => a.date.localeCompare(b.date))
+  if (slots.length === 0) return null
+  return (
+    <Card title="Upcoming cover" className="lg:col-span-3">
+      <ul className="divide-y divide-slate-100 text-sm">
+        {slots.map((c) => {
+          const r = db.leaveRequests.find((x) => x.id === c.leaveId)!
+          return (
+            <li key={c.id} className="flex flex-wrap gap-x-4 py-1.5">
+              <span className="w-32 font-medium">{fmtDate(c.date)}</span>
+              <span>{userName(db, c.coverPatId)} covering for {userName(db, r.requesterId)}</span>
+              <span className="text-slate-500">{c.status === 'accepted' ? (r.status === 'approved' ? 'Confirmed' : 'Cover accepted, leave awaiting approval') : 'Waiting for the cover to accept'}</span>
+            </li>
+          )
+        })}
+      </ul>
     </Card>
   )
 }

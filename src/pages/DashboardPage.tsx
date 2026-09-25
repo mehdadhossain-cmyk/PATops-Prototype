@@ -7,6 +7,9 @@ import { AttendanceValue, StageBadge } from '../components/Risk'
 import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
 import { openPeriods, progress, visibleNonSubmissions } from '../data/submissions'
 import { LSA_DUE_SOON_DAYS, lsaStatus, visibleLsas } from '../data/lsa'
+import { canDecide, weekdayOf } from '../data/leave'
+import { fmtRange, LeaveStatusBadge } from '../components/Leave'
+import { LEAVE_TYPE_LABEL } from '../data/types'
 import { caseActions, casePatId, compliance, visibleCases } from '../data/wellbeing'
 import { studentName } from '../data/logic'
 import { StaffStatusBadge } from '../components/StatusBadges'
@@ -89,6 +92,7 @@ function PatDashboard({ me }: { me: User }) {
           )}
         </Card>
         <MyGroupsCard me={me} />
+        {me.status === 'active' && <LeaveCard me={me} />}
         {me.status === 'active' && <NonSubmissionCard me={me} />}
         {me.status === 'active' && <LsaCard me={me} />}
         {me.status === 'active' && <AtRiskCard me={me} />}
@@ -245,6 +249,7 @@ function TeamDashboard({ me }: { me: User }) {
         </Card>
       </div>
 
+      <LeaveApprovalsCard me={me} />
       <div className="mb-5">
         <TeamReachCard me={me} />
       </div>
@@ -570,5 +575,75 @@ function LsaCard({ me }: { me: User }) {
         </ul>
       )}
     </Card>
+  )
+}
+
+function LeaveCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const today = new Date().toISOString().slice(0, 10)
+  const asks = db.coverSlots.filter((c) => c.coverPatId === me.id && c.status === 'pending' && db.leaveRequests.find((r) => r.id === c.leaveId)?.status === 'awaiting_cover')
+  const covering = db.coverSlots
+    .filter((c) => c.coverPatId === me.id && c.status === 'accepted' && c.date >= today && db.leaveRequests.find((r) => r.id === c.leaveId)?.status === 'approved')
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const mine = db.leaveRequests.filter((r) => r.requesterId === me.id && (r.status.startsWith('awaiting') || (r.status === 'approved' && r.endDate >= today)))
+  if (!asks.length && !covering.length && !mine.length) return null
+  return (
+    <Card title="Leave and cover" className="lg:col-span-2" actions={<Link to="/leave" className="text-sm text-brand-600 hover:underline">Open leave</Link>}>
+      <div className="grid gap-5 md:grid-cols-3">
+        <div>
+          <div className="mb-1 text-xs font-medium tracking-wide text-slate-500 uppercase">Cover requests for you</div>
+          {asks.length === 0 ? <p className="text-sm text-slate-500">None waiting ✓</p> : (
+            <ul className="space-y-1 text-sm">
+              {asks.map((c) => (
+                <li key={c.id}><Link to="/leave" className="font-medium text-amber-700 hover:underline">{weekdayOf(c.date)} {fmtDate(c.date)}</Link> · {db.groups.find((g) => g.id === c.groupId)?.code} for {db.users.find((u) => u.id === db.leaveRequests.find((r) => r.id === c.leaveId)?.requesterId)?.name}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div>
+          <div className="mb-1 text-xs font-medium tracking-wide text-slate-500 uppercase">You're covering</div>
+          {covering.length === 0 ? <p className="text-sm text-slate-500">No upcoming cover</p> : (
+            <ul className="space-y-1 text-sm">
+              {covering.slice(0, 4).map((c) => <li key={c.id}>{weekdayOf(c.date)} {fmtDate(c.date)} · <span className="font-mono text-xs">{db.groups.find((g) => g.id === c.groupId)?.code}</span></li>)}
+            </ul>
+          )}
+        </div>
+        <div>
+          <div className="mb-1 text-xs font-medium tracking-wide text-slate-500 uppercase">Your leave</div>
+          {mine.length === 0 ? <p className="text-sm text-slate-500">No upcoming leave</p> : (
+            <ul className="space-y-1.5 text-sm">
+              {mine.map((r) => <li key={r.id} className="flex flex-wrap items-center gap-2">{fmtRange(r.startDate, r.endDate)} <LeaveStatusBadge r={r} /></li>)}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function LeaveApprovalsCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const waiting = db.leaveRequests.filter((r) => canDecide(db, me, r))
+  if (me.role !== 'lead' && me.role !== 'manager') return null
+  return (
+    <div className="mb-5">
+      <Card title={`Leave waiting for your approval · ${waiting.length}`} actions={<Link to="/leave" className="text-sm text-brand-600 hover:underline">Open leave</Link>}>
+        {waiting.length === 0 ? <Empty>Nothing waiting. ✓</Empty> : (
+          <ul className="divide-y divide-slate-100 text-sm">
+            {waiting.map((r) => {
+              const slots = db.coverSlots.filter((c) => c.leaveId === r.id)
+              return (
+                <li key={r.id} className="flex flex-wrap items-center gap-x-4 py-2">
+                  <span className="w-44 font-medium">{db.users.find((u) => u.id === r.requesterId)?.name}</span>
+                  <span>{fmtRange(r.startDate, r.endDate)}</span>
+                  <span className="text-slate-500">{LEAVE_TYPE_LABEL[r.type]} · {slots.length ? `all ${slots.length} covers accepted` : 'no cover needed'}</span>
+                  <span className="ml-auto"><LeaveStatusBadge r={r} /></span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Card>
+    </div>
   )
 }

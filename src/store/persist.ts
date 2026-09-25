@@ -38,7 +38,29 @@ export async function loadSaved(): Promise<DbState | null> {
   return null
 }
 
+let writing = false
+let queued: DbState | null = null
+
+/**
+ * Writes the latest state. If a write is already running, only the newest state is written next,
+ * so rapid edits don't pile up but the final state always lands.
+ */
 export async function save(db: DbState): Promise<void> {
+  if (writing) {
+    queued = db
+    return
+  }
+  writing = true
+  await write(db)
+  writing = false
+  if (queued) {
+    const next = queued
+    queued = null
+    await save(next)
+  }
+}
+
+async function write(db: DbState): Promise<void> {
   try {
     const idb = await open()
     await new Promise<void>((resolve, reject) => {

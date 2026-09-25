@@ -385,6 +385,58 @@ export interface LsaUpdate {
   summary: string
 }
 
+export type LeaveType = 'annual' | 'toil' | 'medical_appointment' | 'unpaid' | 'other'
+export const LEAVE_TYPE_LABEL: Record<LeaveType, string> = {
+  annual: 'Annual leave',
+  toil: 'Time off in lieu',
+  medical_appointment: 'Medical appointment',
+  unpaid: 'Unpaid leave',
+  other: 'Other',
+}
+
+export type LeaveStatus = 'awaiting_cover' | 'awaiting_lead' | 'awaiting_manager' | 'approved' | 'rejected' | 'cancelled'
+export const LEAVE_STATUS_LABEL: Record<LeaveStatus, string> = {
+  awaiting_cover: 'Waiting for cover',
+  awaiting_lead: 'Waiting for PAT Lead',
+  awaiting_manager: 'Waiting for PAT Manager',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+}
+
+export interface Decision {
+  by: string
+  at: string
+  approved: boolean
+  note: string
+}
+
+export interface LeaveRequest {
+  id: string
+  requesterId: string
+  type: LeaveType
+  startDate: string
+  endDate: string
+  reason: string
+  status: LeaveStatus
+  createdAt: string
+  leadDecision: Decision | null
+  managerDecision: Decision | null
+  cancelledAt: string | null
+}
+
+/** One class session during the leave that needs another PAT to cover it. */
+export interface CoverSlot {
+  id: string
+  leaveId: string
+  date: string
+  groupId: string
+  coverPatId: string
+  status: 'pending' | 'accepted' | 'declined'
+  respondedAt: string | null
+  note: string
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -403,6 +455,8 @@ export interface DbState {
   nonSubmissions: NonSubmission[]
   lsas: Lsa[]
   lsaUpdates: LsaUpdate[]
+  leaveRequests: LeaveRequest[]
+  coverSlots: CoverSlot[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

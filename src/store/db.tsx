@@ -6,11 +6,13 @@ import { buildWellbeingSeed } from '../data/seedWellbeing'
 import { buildAttendanceSeed } from '../data/seedAttendance'
 import { buildSubmissionsSeed } from '../data/seedSubmissions'
 import { buildLsaSeed } from '../data/seedLsa'
+import { buildLeaveSeed } from '../data/seedLeave'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
 import type { RetentionStage } from '../data/types'
 import type { AttendanceRow, LsaRow, NonSubmissionRow } from '../data/importer'
-import type { Lsa } from '../data/types'
+import type { CoverSlot, LeaveRequest, LeaveType, Lsa } from '../data/types'
+import { statusAfterCover } from '../data/leave'
 import type { FollowUpStatus, NonSubmission, SubmissionPeriod } from '../data/types'
 import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User, WellbeingCase, WellbeingCategory } from '../data/types'
 import { nextOpenCycle } from '../data/wellbeing'
@@ -44,6 +46,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 5) next = { ...next, ...buildSubmissionsSeed(next.groups, next.students), version: 6 }
   // v6 -> v7: add LSAs.
   if (next.version === 6) next = { ...next, ...buildLsaSeed(next.groups, next.students), version: 7 }
+  // v7 -> v8: add leave requests and cover.
+  if (next.version === 7) next = { ...next, ...buildLeaveSeed(next.users, next.groups), version: 8 }
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -115,6 +119,11 @@ interface DbContextValue {
   addRiskNote: (studentId: string, text: string, stage: RetentionStage | null) => void
   savePeriod: (p: SubmissionPeriod) => void
   importNonSubmissions: (periodId: string, rows: NonSubmissionRow[], source: string) => void
+  submitLeave: (input: { type: LeaveType; startDate: string; endDate: string; reason: string; covers: { date: string; groupId: string; coverPatId: string }[] }) => void
+  respondCover: (slotId: string, accept: boolean, note: string) => void
+  replaceCover: (slotId: string, coverPatId: string) => void
+  decideLeave: (leaveId: string, approved: boolean, note: string) => void
+  cancelLeave: (leaveId: string) => void
   saveLsa: (input: { id?: string; studentId: string; startDate: string; endDate: string | null; nextFollowUp: string | null; comments: string }) => void
   importLsas: (rows: LsaRow[], source: string) => void
   updateNonSubmission: (id: string, patch: { status: FollowUpStatus; note: string; expectedDate: string | null }, callLog: 'phone' | 'whatsapp' | 'email' | 'sms' | 'in_person' | null) => void
@@ -136,10 +145,9 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
   const [db, setDb] = useState<DbState>(initial)
   const [meId, setMeId] = useState<string | null>(() => storage.get(SESSION_KEY))
 
-  // Debounced so bursts of edits are written once.
+  // Save every change straight away, so nothing is lost if the page is closed or reloaded.
   useEffect(() => {
-    const t = setTimeout(() => save(db), 300)
-    return () => clearTimeout(t)
+    save(db)
   }, [db])
 
   useEffect(() => {
@@ -515,6 +523,75 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
             subjectUserId: patId,
           },
         )
+      },
+      submitLeave: (input) => {
+        if (!me) return
+        const t = now()
+        const id = uid('lv')
+        const req: LeaveRequest = {
+          id, requesterId: me.id, type: input.type, startDate: input.startDate, endDate: input.endDate, reason: input.reason,
+          status: input.covers.length ? 'awaiting_cover' : statusAfterCover(db, me), createdAt: t,
+          leadDecision: null, managerDecision: null, cancelledAt: null,
+        }
+        const slots: CoverSlot[] = input.covers.map((c) => ({ id: uid('cs'), leaveId: id, ...c, status: 'pending', respondedAt: null, note: '' }))
+        const coverEvents = slots.map((s) => ({
+          id: uid('ev'), at: t, actorId: me.id, subjectUserId: s.coverPatId, type: 'cover.requested',
+          message: `Asked to cover ${db.groups.find((g) => g.id === s.groupId)?.code} on ${s.date} for ${me.name}`,
+        }))
+        setDb((d) => ({
+          ...d,
+          leaveRequests: [...d.leaveRequests, req],
+          coverSlots: [...d.coverSlots, ...slots],
+          audit: [...d.audit, { id: uid('ev'), at: t, actorId: me.id, subjectUserId: me.id, type: 'leave.requested', message: `Requested ${input.type} leave ${input.startDate} to ${input.endDate} (${slots.length} sessions to cover)` }, ...coverEvents],
+        }))
+      },
+      respondCover: (slotId, accept, note) => {
+        const slot = db.coverSlots.find((c) => c.id === slotId)
+        const req = db.leaveRequests.find((r) => r.id === slot?.leaveId)
+        const requester = db.users.find((u) => u.id === req?.requesterId)
+        if (!slot || !req || !requester || !me) return
+        const t = now()
+        const slots = db.coverSlots.map((c) => (c.id === slotId ? { ...c, status: accept ? ('accepted' as const) : ('declined' as const), respondedAt: t, note } : c))
+        const allAccepted = slots.filter((c) => c.leaveId === req.id).every((c) => c.status === 'accepted')
+        const group = db.groups.find((g) => g.id === slot.groupId)?.code
+        mutate(
+          (d) => ({
+            ...d,
+            coverSlots: slots,
+            leaveRequests: d.leaveRequests.map((r) => (r.id === req.id && allAccepted && r.status === 'awaiting_cover' ? { ...r, status: statusAfterCover(d, requester) } : r)),
+          }),
+          { type: accept ? 'cover.accepted' : 'cover.declined', message: `${me.name} ${accept ? 'accepted' : 'declined'} cover of ${group} on ${slot.date} for ${requester.name}${note ? `: ${note}` : ''}`, subjectUserId: requester.id },
+        )
+      },
+      replaceCover: (slotId, coverPatId) => {
+        const slot = db.coverSlots.find((c) => c.id === slotId)
+        const who = db.users.find((u) => u.id === coverPatId)?.name
+        mutate((d) => ({ ...d, coverSlots: d.coverSlots.map((c) => (c.id === slotId ? { ...c, coverPatId, status: 'pending', respondedAt: null, note: '' } : c)) }), {
+          type: 'cover.requested', message: `Asked ${who} to cover ${db.groups.find((g) => g.id === slot?.groupId)?.code} on ${slot?.date}`, subjectUserId: me?.id ?? null,
+        })
+      },
+      decideLeave: (leaveId, approved, note) => {
+        const req = db.leaveRequests.find((r) => r.id === leaveId)
+        if (!req || !me) return
+        const decision = { by: me.id, at: now(), approved, note }
+        const atLead = req.status === 'awaiting_lead'
+        mutate(
+          (d) => ({
+            ...d,
+            leaveRequests: d.leaveRequests.map((r) =>
+              r.id !== leaveId ? r : atLead
+                ? { ...r, leadDecision: decision, status: approved ? 'awaiting_manager' : 'rejected' }
+                : { ...r, managerDecision: decision, status: approved ? 'approved' : 'rejected' },
+            ),
+          }),
+          { type: approved ? 'leave.approved' : 'leave.rejected', message: `${atLead ? 'PAT Lead' : 'PAT Manager'} ${approved ? 'approved' : 'rejected'} leave ${req.startDate} to ${req.endDate}${note ? `: ${note}` : ''}`, subjectUserId: req.requesterId },
+        )
+      },
+      cancelLeave: (leaveId) => {
+        const req = db.leaveRequests.find((r) => r.id === leaveId)
+        mutate((d) => ({ ...d, leaveRequests: d.leaveRequests.map((r) => (r.id === leaveId ? { ...r, status: 'cancelled', cancelledAt: now() } : r)) }), {
+          type: 'leave.cancelled', message: `Cancelled leave ${req?.startDate} to ${req?.endDate}`, subjectUserId: req?.requesterId ?? null,
+        })
       },
       saveLsa: (input) => {
         if (!me) return

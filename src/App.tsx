@@ -17,6 +17,7 @@ import { AtRiskPage } from './pages/AtRiskPage'
 import { AttendancePage } from './pages/AttendancePage'
 import { NonSubmissionsPage } from './pages/NonSubmissionsPage'
 import { LsaPage } from './pages/LsaPage'
+import { LeavePage } from './pages/LeavePage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { ImportPage } from './pages/ImportPage'
@@ -52,6 +53,7 @@ function AppRoutes() {
         <Route path="at-risk" element={<AtRiskPage />} />
         <Route path="non-submissions" element={<NonSubmissionsPage />} />
         <Route path="lsa" element={<LsaPage />} />
+        <Route path="leave" element={<LeavePage />} />
         {canManageStudents(me.role) && <Route path="attendance" element={<AttendancePage />} />}
         <Route path="students/:id" element={<StudentDetailPage />} />
         {staff && <Route path="intakes" element={<IntakesPage />} />}
