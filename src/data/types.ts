@@ -158,6 +158,69 @@ export interface Student {
   status: StudentStatus
 }
 
+export type Channel = 'in_person' | 'phone' | 'sms' | 'email' | 'whatsapp' | 'teams'
+export const CHANNEL_LABEL: Record<Channel, string> = {
+  in_person: 'In person',
+  phone: 'Phone call',
+  sms: 'Text message',
+  email: 'Email',
+  whatsapp: 'WhatsApp',
+  teams: 'Teams',
+}
+
+export type ContactReason =
+  | 'welcome'
+  | 'attendance'
+  | 'academic'
+  | 'assessment'
+  | 'wellbeing'
+  | 'finance'
+  | 'personal'
+  | 'admin'
+  | 'other'
+export const REASON_LABEL: Record<ContactReason, string> = {
+  welcome: 'Welcome / induction',
+  attendance: 'Attendance',
+  academic: 'Academic support',
+  assessment: 'Assessment / submission',
+  wellbeing: 'Wellbeing',
+  finance: 'Finance / SFE',
+  personal: 'Personal circumstances',
+  admin: 'Admin / enrolment',
+  other: 'Other',
+}
+
+export type ContactOutcome = 'reached' | 'no_answer' | 'left_message'
+export const OUTCOME_LABEL: Record<ContactOutcome, string> = {
+  reached: 'Spoke / replied',
+  no_answer: 'No answer',
+  left_message: 'Left message',
+}
+
+/** One logged interaction with a student, or an announcement to one or more groups. */
+export interface CommLog {
+  id: string
+  authorId: string
+  kind: 'individual' | 'announcement'
+  /** Set for individual contacts. */
+  studentId: string | null
+  /** Set for announcements. */
+  groupIds: string[]
+  channel: Channel
+  direction: 'outbound' | 'inbound'
+  outcome: ContactOutcome
+  reason: ContactReason
+  summary: string
+  /** When the contact happened (may be earlier than when it was logged). */
+  at: string
+  loggedAt: string
+  followUpDate: string | null
+  followUpDoneAt: string | null
+  /** Entries are never deleted; they're voided with a reason to keep the audit trail. */
+  voidedAt: string | null
+  voidReason: string
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -166,6 +229,7 @@ export interface DbState {
   intakes: Intake[]
   groups: Group[]
   students: Student[]
+  comms: CommLog[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

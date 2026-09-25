@@ -1,25 +1,34 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { buildSeed, DB_VERSION } from '../data/seed'
 import { buildAcademicSeed } from '../data/seedAcademic'
+import { buildCommsSeed } from '../data/seedComms'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
-import type { Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User } from '../data/types'
+import { loadSaved, save } from './persist'
+import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User } from '../data/types'
 
-const STORAGE_KEY = 'patops.db'
 const SESSION_KEY = 'patops.session'
 
-function load(): DbState {
-  try {
-    const raw = storage.get(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as DbState
-      if (parsed.version === DB_VERSION) return parsed
-      // v1 -> v2: keep staff and training progress, add the academic structure.
-      if (parsed.version === 1) return { ...parsed, ...buildAcademicSeed(parsed.users, parsed.campuses), version: DB_VERSION }
+async function load(): Promise<DbState> {
+  const saved = await loadSaved()
+  if (saved) {
+    try {
+      return migrate(saved)
+    } catch {
+      // Unknown shape: start from fresh demo data.
     }
-  } catch {
-    // fall through to seed
   }
   return buildSeed()
+}
+
+/** Upgrade demo data saved by an earlier step of the prototype, keeping what the user did. */
+function migrate(d: DbState): DbState {
+  let next = d
+  // v1 -> v2: add the academic structure.
+  if (next.version === 1) next = { ...next, ...buildAcademicSeed(next.users, next.campuses), version: 2 }
+  // v2 -> v3: add call log history.
+  if (next.version === 2) next = { ...next, comms: buildCommsSeed(next.users, next.groups, next.students), version: 3 }
+  if (next.version !== DB_VERSION) throw new Error('Unknown data version')
+  return next
 }
 
 /** Storage can be unavailable (private mode, blocked site data); the app still works in memory. */
@@ -43,6 +52,8 @@ const storage = {
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`
 const now = () => new Date().toISOString()
+
+export type NewCommInput = Omit<CommLog, 'id' | 'authorId' | 'loggedAt' | 'followUpDoneAt' | 'voidedAt' | 'voidReason'>
 
 export interface NewStaffInput {
   name: string
@@ -74,16 +85,31 @@ interface DbContextValue {
   updateStudent: (id: string, patch: Partial<Student>) => void
   importStudents: (rows: Student[], source: string) => void
   importGroups: (rows: Group[], source: string) => void
+  addComms: (entries: NewCommInput[]) => void
+  completeFollowUp: (id: string) => void
+  voidComm: (id: string, reason: string) => void
 }
 
 const DbContext = createContext<DbContextValue | null>(null)
 
+/** Loads saved data (or demo data) before rendering the app. */
 export function DbProvider({ children }: { children: ReactNode }) {
-  const [db, setDb] = useState<DbState>(load)
+  const [initial, setInitial] = useState<DbState | null>(null)
+  useEffect(() => {
+    load().then(setInitial)
+  }, [])
+  if (!initial) return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Loading PATops…</div>
+  return <LoadedDbProvider initial={initial}>{children}</LoadedDbProvider>
+}
+
+function LoadedDbProvider({ initial, children }: { initial: DbState; children: ReactNode }) {
+  const [db, setDb] = useState<DbState>(initial)
   const [meId, setMeId] = useState<string | null>(() => storage.get(SESSION_KEY))
 
+  // Debounced so bursts of edits are written once.
   useEffect(() => {
-    storage.set(STORAGE_KEY, JSON.stringify(db))
+    const t = setTimeout(() => save(db), 300)
+    return () => clearTimeout(t)
   }, [db])
 
   useEffect(() => {
@@ -313,6 +339,21 @@ export function DbProvider({ children }: { children: ReactNode }) {
           },
           { type: 'groups.imported', message: `Imported ${rows.length} groups from ${source}`, subjectUserId: null },
         )
+      },
+      addComms: (entries) => {
+        if (!me || entries.length === 0) return
+        const t = now()
+        const logs: CommLog[] = entries.map((e) => ({ ...e, id: uid('cl'), authorId: me.id, loggedAt: t, followUpDoneAt: null, voidedAt: null, voidReason: '' }))
+        // Log entries are their own record; no separate audit event per contact.
+        setDb((d) => ({ ...d, comms: [...d.comms, ...logs] }))
+      },
+      completeFollowUp: (id) => {
+        setDb((d) => ({ ...d, comms: d.comms.map((c) => (c.id === id ? { ...c, followUpDoneAt: now() } : c)) }))
+      },
+      voidComm: (id, reason) => {
+        mutate((d) => ({ ...d, comms: d.comms.map((c) => (c.id === id ? { ...c, voidedAt: now(), voidReason: reason } : c)) }), {
+          type: 'comm.voided', message: `Marked a call log entry as entered in error: ${reason}`, subjectUserId: me?.id ?? null,
+        })
       },
     }
   }, [db, me, meId, mutate, upsertProgress])

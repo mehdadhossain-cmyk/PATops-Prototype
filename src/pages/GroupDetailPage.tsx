@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { LogContactModal, Toast } from '../components/Comms'
 import { Link, useParams } from 'react-router-dom'
 import { StudentStatusBadge } from '../components/StatusBadges'
 import { Badge, Button, Card, CopyButton, Empty, Field, Input, PageHeader, Select, Tabs } from '../components/ui'
@@ -6,6 +7,9 @@ import {
   campusName,
   canManageStudents,
   courseName,
+  daysSince,
+  fmtDate,
+  lastReachedByStudent,
   fmtSchedule,
   groupStudents,
   intakeLabel,
@@ -25,6 +29,11 @@ export function GroupDetailPage() {
   const { db, me } = useDb()
   const [q, setQ] = useState('')
   const [show, setShow] = useState<'active' | 'all'>('active')
+  const [selected, setSelected] = useState<string[]>([])
+  const [logging, setLogging] = useState<{ mode: 'individual' | 'announcement'; ids: string[] } | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const clearToast = useCallback(() => setToast(null), [])
+  const lastReached = useMemo(() => lastReachedByStudent(db.comms), [db.comms])
   if (!me) return null
   const g = visibleGroups(db, me).find((x) => x.id === id)
   if (!g) return <p>Group not found or not visible to you.</p>
@@ -47,6 +56,7 @@ export function GroupDetailPage() {
         subtitle={`${courseName(db, g.courseId)} · ${intakeLabel(db, g.intakeId)} · ${campusName(db, g.campusId)}`}
         actions={
           <>
+            <Button variant="secondary" onClick={() => setLogging({ mode: 'announcement', ids: [] })}>📣 Log announcement</Button>
             {active.length > 0 && <CopyButton text={emails} label={`Copy ${active.length} emails`} className="px-3 py-2 text-sm" />}
             <Button
               variant="secondary"
@@ -79,6 +89,9 @@ export function GroupDetailPage() {
         <div className="mb-4 flex flex-wrap gap-2">
           <Input id="group-student-q" placeholder="Search name or ID…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
           <Tabs value={show} onChange={setShow} options={[{ value: 'active', label: 'Active' }, { value: 'all', label: 'All' }]} />
+          {selected.length > 0 && (
+            <Button onClick={() => setLogging({ mode: 'individual', ids: selected })}>Log contact for {selected.length} selected</Button>
+          )}
         </div>
         {students.length === 0 ? (
           <Empty>No students{q ? ' match your search' : ' in this group yet. PAT Admins add them from Import data'}.</Empty>
@@ -87,18 +100,35 @@ export function GroupDetailPage() {
             <table className="w-full text-sm">
               <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr className="border-b border-slate-100">
+                  <th className="py-2 pr-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={students.length > 0 && students.every((s) => selected.includes(s.id))}
+                      onChange={(e) => setSelected(e.target.checked ? students.map((s) => s.id) : [])}
+                    />
+                  </th>
                   <th className="py-2 pr-4">Student</th>
                   <th className="py-2 pr-4">EBS code</th>
                   <th className="py-2 pr-4">Uni ID</th>
                   <th className="py-2 pr-4">Phone</th>
                   <th className="py-2 pr-4">Emails</th>
                   <th className="py-2 pr-4">Emergency contact</th>
+                  <th className="py-2 pr-4">Last reached</th>
                   <th className="py-2 pr-4">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {students.map((s) => (
                   <tr key={s.id} className="align-top hover:bg-slate-50">
+                    <td className="py-2.5 pr-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${studentName(s)}`}
+                        checked={selected.includes(s.id)}
+                        onChange={() => setSelected(selected.includes(s.id) ? selected.filter((x) => x !== s.id) : [...selected, s.id])}
+                      />
+                    </td>
                     <td className="py-2.5 pr-4"><Link to={`/students/${s.id}`} className="font-medium hover:text-brand-600">{studentName(s)}</Link></td>
                     <td className="py-2.5 pr-4 font-mono text-xs tabular-nums">{s.ebsPersonCode}</td>
                     <td className="py-2.5 pr-4 font-mono text-xs tabular-nums">{s.uniStudentId}</td>
@@ -111,6 +141,13 @@ export function GroupDetailPage() {
                       <div>{s.emergencyContactName || '—'}</div>
                       <div className="tabular-nums text-slate-400">{s.emergencyContactPhone}</div>
                     </td>
+                    <td className="py-2.5 pr-4 text-xs whitespace-nowrap">
+                      {(() => {
+                        const at = lastReached.get(s.id)
+                        const d = daysSince(at)
+                        return at ? <span className={d! > 30 ? 'text-amber-700' : 'text-slate-600'}>{fmtDate(at)}</span> : <span className="text-rose-600">Never</span>
+                      })()}
+                    </td>
                     <td className="py-2.5 pr-4"><StudentStatusBadge status={s.status} /></td>
                   </tr>
                 ))}
@@ -119,6 +156,15 @@ export function GroupDetailPage() {
           </div>
         )}
       </Card>
+      <LogContactModal
+        key={logging ? `${logging.mode}-${logging.ids.join()}` : 'closed'}
+        open={!!logging}
+        initialMode={logging?.mode}
+        studentIds={logging?.ids}
+        groupIds={logging?.mode === 'announcement' ? [g.id] : []}
+        onClose={(msg) => { setLogging(null); if (msg) { setToast(msg); setSelected([]) } }}
+      />
+      <Toast message={toast} onDone={clearToast} />
     </div>
   )
 }

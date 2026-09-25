@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import { CommEntry, LogContactModal, Toast } from '../components/Comms'
 import { Link, useParams } from 'react-router-dom'
 import { StudentStatusBadge } from '../components/StatusBadges'
-import { Button, Card, CopyButton, Field, Input, PageHeader, Select } from '../components/ui'
-import { campusName, canManageStudents, courseName, fmtSchedule, intakeLabel, studentName, userName, visibleStudents } from '../data/logic'
+import { Button, Card, CopyButton, Empty, Field, Input, PageHeader, Select, Tabs } from '../components/ui'
+import { campusName, canManageStudents, courseName, daysSince, fmtDate, fmtSchedule, intakeLabel, lastReachedByStudent, studentName, studentTimeline, userName, visibleStudents } from '../data/logic'
 import type { Student, StudentStatus } from '../data/types'
 import { useDb } from '../store/db'
 
@@ -54,11 +55,7 @@ export function StudentDetailPage() {
               <p className="text-sm text-slate-500">Not in a group.</p>
             )}
           </Card>
-          <Card title="Support record" className="lg:col-span-3">
-            <p className="text-sm text-slate-500">
-              Coming in the next steps: call log, attendance and risk status, wellbeing plan, non-submissions and LSAs for this student, all in one timeline.
-            </p>
-          </Card>
+          <ContactHistory studentId={s.id} />
         </div>
       )}
     </div>
@@ -130,6 +127,43 @@ function EditStudent({ student, onDone }: { student: Student; onDone: () => void
           <Button type="button" variant="secondary" onClick={onDone}>Cancel</Button>
         </div>
       </form>
+    </Card>
+  )
+}
+
+function ContactHistory({ studentId }: { studentId: string }) {
+  const { db } = useDb()
+  const [logging, setLogging] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const [show, setShow] = useState<'all' | 'individual'>('all')
+  const clearToast = useCallback(() => setToast(null), [])
+  const s = db.students.find((x) => x.id === studentId)!
+  const timeline = studentTimeline(db, s).filter((c) => show === 'all' || c.kind === 'individual')
+  const last = lastReachedByStudent(db.comms).get(s.id)
+  const days = daysSince(last)
+
+  return (
+    <Card
+      title="Contact history"
+      className="lg:col-span-3"
+      actions={<Button onClick={() => setLogging(true)}>+ Log contact</Button>}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-600">
+          Last reached:{' '}
+          {last ? <span className={days! > 30 ? 'font-medium text-amber-700' : ''}>{fmtDate(last)} ({days} days ago)</span> : <span className="font-medium text-rose-600">never</span>}
+        </p>
+        <Tabs value={show} onChange={setShow} options={[{ value: 'all', label: 'Include announcements' }, { value: 'individual', label: 'Direct contact only' }]} />
+      </div>
+      {timeline.length === 0 ? (
+        <Empty>No contact logged with this student yet.</Empty>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {timeline.map((c) => <CommEntry key={c.id} c={c} showStudent={false} />)}
+        </ul>
+      )}
+      <LogContactModal key={String(logging)} open={logging} studentIds={[s.id]} onClose={(msg) => { setLogging(false); if (msg) setToast(msg) }} />
+      <Toast message={toast} onDone={clearToast} />
     </Card>
   )
 }

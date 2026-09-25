@@ -1,7 +1,9 @@
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { CommEntry, LogContactModal, Toast } from '../components/Comms'
 import { StaffStatusBadge } from '../components/StatusBadges'
 import { Button, Card, Empty, PageHeader, Progress, Stat, cx } from '../components/ui'
-import { activeModules, campusName, courseName, fmtDate, fmtSchedule, groupStudents, intakeLabel, isProfileComplete, moduleDueDate, needsTraining, PAT_STUDENT_CAP, patGroups, patStudentCount, progressFor, trainingSummary, visibleGroups, visibleStaff } from '../data/logic'
+import { activeModules, campusName, CONTACT_GAP_DAYS, openFollowUps, patCommStats, courseName, fmtDate, fmtSchedule, groupStudents, intakeLabel, isProfileComplete, moduleDueDate, needsTraining, PAT_STUDENT_CAP, patGroups, patStudentCount, progressFor, trainingSummary, visibleGroups, visibleStaff } from '../data/logic'
 import type { User } from '../data/types'
 import { useDb } from '../store/db'
 
@@ -79,6 +81,7 @@ function PatDashboard({ me }: { me: User }) {
           )}
         </Card>
         <MyGroupsCard me={me} />
+        {me.status === 'active' && <CallLogCard me={me} />}
         <Card title="Coming in the next steps" className="lg:col-span-2">
           <p className="text-sm text-slate-500">
             This dashboard will also show at-risk students, wellbeing meetings due, non-submission follow-ups, LSAs and leave requests awaiting your cover response.
@@ -86,6 +89,54 @@ function PatDashboard({ me }: { me: User }) {
         </Card>
       </div>
     </div>
+  )
+}
+
+function CallLogCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const [logging, setLogging] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const clearToast = useCallback(() => setToast(null), [])
+  const stats = patCommStats(db, me.id)
+  const due = openFollowUps(db.comms.filter((c) => c.authorId === me.id)).filter((f) => f.due.getTime() <= Date.now() + 86400000)
+
+  return (
+    <Card
+      title="Call log"
+      className="lg:col-span-2"
+      actions={
+        <div className="flex gap-2">
+          <Link to="/call-log"><Button variant="secondary">Open call log</Button></Link>
+          <Button onClick={() => setLogging(true)}>+ Log contact</Button>
+        </div>
+      }
+    >
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">Reached · {CONTACT_GAP_DAYS} days</div>
+          <div className={cx('text-xl font-semibold', stats.coverage >= 70 ? 'text-emerald-600' : stats.coverage >= 40 ? 'text-amber-600' : 'text-rose-600')}>{stats.coverage}%</div>
+          <div className="text-xs text-slate-500">{stats.students - stats.reached30} students still to reach</div>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">Contacts this week</div>
+          <div className="text-xl font-semibold">{stats.contacts7}</div>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">Follow-ups due</div>
+          <div className={cx('text-xl font-semibold', due.some((f) => f.overdue) && 'text-rose-600')}>{due.length}</div>
+          <div className="text-xs text-slate-500">{due.filter((f) => f.overdue).length} overdue</div>
+        </div>
+      </div>
+      {due.length > 0 ? (
+        <ul className="divide-y divide-slate-100 border-t border-slate-100">
+          {due.slice(0, 5).map((f) => <CommEntry key={f.log.id} c={f.log} showAuthor={false} />)}
+        </ul>
+      ) : (
+        <Empty>No follow-ups due today. ✓</Empty>
+      )}
+      <LogContactModal key={String(logging)} open={logging} onClose={(msg) => { setLogging(false); if (msg) setToast(msg) }} />
+      <Toast message={toast} onDone={clearToast} />
+    </Card>
   )
 }
 
@@ -182,6 +233,10 @@ function TeamDashboard({ me }: { me: User }) {
         </Card>
       </div>
 
+      <div className="mb-5">
+        <TeamReachCard me={me} />
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="New joiners" actions={<Link to="/training-tracker" className="text-sm text-brand-600 hover:underline">Training tracker</Link>}>
           {newJoiners.length === 0 ? (
@@ -223,5 +278,27 @@ function TeamDashboard({ me }: { me: User }) {
         </Card>
       </div>
     </div>
+  )
+}
+
+function TeamReachCard({ me }: { me: User }) {
+  const { db } = useDb()
+  const pats = visibleStaff(db, me).filter((u) => u.role === 'pat' && u.status === 'active')
+  const rows = pats.map((u) => ({ u, s: patCommStats(db, u.id) })).sort((a, b) => a.s.coverage - b.s.coverage)
+  const students = rows.reduce((n, r) => n + r.s.students, 0)
+  const reached = rows.reduce((n, r) => n + r.s.reached30, 0)
+  return (
+    <Card title={`Students reached in the last ${CONTACT_GAP_DAYS} days · ${students ? Math.round((reached / students) * 100) : 0}%`} actions={<Link to="/call-log" className="text-sm text-brand-600 hover:underline">All call logs</Link>}>
+      <p className="mb-3 text-sm text-slate-500">PATs with the lowest share of students reached:</p>
+      <ul className="grid gap-x-8 gap-y-2 text-sm md:grid-cols-2">
+        {rows.slice(0, 6).map(({ u, s }) => (
+          <li key={u.id} className="flex items-center gap-3">
+            <Link to={`/call-log?pat=${u.id}`} className="w-40 truncate hover:text-brand-600">{u.name}</Link>
+            <div className="flex-1"><Progress value={s.coverage} tone={s.coverage >= 70 ? 'good' : s.coverage >= 40 ? 'warn' : 'bad'} /></div>
+            <span className="w-24 text-right text-xs tabular-nums text-slate-500">{s.coverage}% · {s.reached30}/{s.students}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   )
 }

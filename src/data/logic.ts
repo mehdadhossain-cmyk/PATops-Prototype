@@ -1,6 +1,6 @@
 // Pure, UI-independent business rules. Easy to unit test and to move
 // server-side later.
-import type { DbState, Group, Role, Student, TrainingModule, TrainingProgress, User } from './types'
+import type { CommLog, DbState, Group, Role, Student, TrainingModule, TrainingProgress, User } from './types'
 
 const day = 24 * 60 * 60 * 1000
 
@@ -155,3 +155,86 @@ export function visibleStudents(db: DbState, viewer: User): Student[] {
 export const studentName = (s: Student) => `${s.firstName} ${s.lastName}`
 
 export const fmtSchedule = (g: Group) => `${g.classDays.join(' & ')} · ${g.startTime}–${g.endTime}`
+
+// ---- Call log ---------------------------------------------------------------
+
+/** A student counts as "not contacted recently" after this many days without a successful contact. */
+export const CONTACT_GAP_DAYS = 30
+
+const isLive = (c: CommLog) => !c.voidedAt
+
+/** Logs a viewer may see: PATs see their own entries and anything about their students; leads their campus; admins all. */
+export function visibleComms(db: DbState, viewer: User): CommLog[] {
+  if (viewer.role === 'admin' || viewer.role === 'manager') return db.comms
+  const groupIds = new Set(visibleGroups(db, viewer).map((g) => g.id))
+  const studentIds = new Set(db.students.filter((s) => groupIds.has(s.groupId)).map((s) => s.id))
+  const campusStaff = viewer.role === 'lead' ? new Set(db.users.filter((u) => u.campusId === viewer.campusId).map((u) => u.id)) : new Set([viewer.id])
+  return db.comms.filter(
+    (c) => campusStaff.has(c.authorId) || (c.studentId && studentIds.has(c.studentId)) || c.groupIds.some((g) => groupIds.has(g)),
+  )
+}
+
+/** Timeline for one student: their individual contacts plus announcements sent to their group. */
+export function studentTimeline(db: DbState, s: Student): CommLog[] {
+  return db.comms.filter((c) => c.studentId === s.id || c.groupIds.includes(s.groupId)).sort((a, b) => b.at.localeCompare(a.at))
+}
+
+/** Most recent successful individual contact per student (one pass over the log). */
+export function lastReachedByStudent(comms: CommLog[]): Map<string, string> {
+  const m = new Map<string, string>()
+  for (const c of comms) {
+    if (!isLive(c) || c.kind !== 'individual' || !c.studentId || c.outcome !== 'reached') continue
+    const prev = m.get(c.studentId)
+    if (!prev || c.at > prev) m.set(c.studentId, c.at)
+  }
+  return m
+}
+
+export interface FollowUp {
+  log: CommLog
+  due: Date
+  overdue: boolean
+}
+
+export function openFollowUps(comms: CommLog[], now = new Date()): FollowUp[] {
+  const today = now.toISOString().slice(0, 10)
+  return comms
+    .filter((c) => isLive(c) && c.followUpDate && !c.followUpDoneAt)
+    .map((c) => ({ log: c, due: new Date(c.followUpDate!), overdue: c.followUpDate! < today }))
+    .sort((a, b) => +a.due - +b.due)
+}
+
+export interface PatCommStats {
+  students: number
+  contacts7: number
+  contacts30: number
+  reached30: number
+  coverage: number // % of active students successfully contacted in CONTACT_GAP_DAYS
+  announcements30: number
+  overdueFollowUps: number
+  lastLogAt: string | null
+}
+
+export function patCommStats(db: DbState, patId: string, now = new Date()): PatCommStats {
+  const since7 = new Date(now.getTime() - 7 * day).toISOString()
+  const since30 = new Date(now.getTime() - CONTACT_GAP_DAYS * day).toISOString()
+  const mine = db.comms.filter((c) => c.authorId === patId && isLive(c))
+  const groupIds = new Set(patGroups(db, patId).map((g) => g.id))
+  const students = db.students.filter((s) => s.status === 'active' && groupIds.has(s.groupId))
+  const last = lastReachedByStudent(mine)
+  const reached30 = students.filter((s) => (last.get(s.id) ?? '') >= since30).length
+  const individual = mine.filter((c) => c.kind === 'individual')
+  return {
+    students: students.length,
+    contacts7: individual.filter((c) => c.at >= since7).length,
+    contacts30: individual.filter((c) => c.at >= since30).length,
+    reached30,
+    coverage: students.length ? Math.round((reached30 / students.length) * 100) : 100,
+    announcements30: mine.filter((c) => c.kind === 'announcement' && c.at >= since30).length,
+    overdueFollowUps: openFollowUps(mine, now).filter((f) => f.overdue).length,
+    lastLogAt: mine.reduce<string | null>((m, c) => (!m || c.loggedAt > m ? c.loggedAt : m), null),
+  }
+}
+
+export const daysSince = (iso: string | null | undefined, now = new Date()) =>
+  iso ? Math.floor((now.getTime() - new Date(iso).getTime()) / day) : null

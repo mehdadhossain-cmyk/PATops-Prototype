@@ -25,6 +25,7 @@ export function Layout() {
     { to: '/training', label: 'My training', icon: '✎', show: me.role === 'pat' || me.role === 'lead' },
     { to: '/groups', label: me.role === 'pat' ? 'My groups' : 'Groups', icon: '▤', show: true },
     { to: '/students', label: me.role === 'pat' ? 'My students' : 'Students', icon: '🎓', show: true },
+    { to: '/call-log', label: me.role === 'pat' ? 'Call log' : 'Call logs', icon: '☎', show: true },
     { to: '/intakes', label: 'Intakes', icon: '◷', show: canViewStaff(me.role) },
     { to: '/import', label: 'Import data', icon: '⇪', show: canManageStudents(me.role) },
     { to: '/staff', label: 'Staff', icon: '👥', show: canViewStaff(me.role) },
@@ -33,7 +34,7 @@ export function Layout() {
     { to: '/settings', label: 'Settings', icon: '⚑', show: me.role === 'admin' || me.role === 'manager' },
   ]
 
-  const upcoming = ['Call log', 'Wellbeing', 'At-risk students', 'Non-submissions', 'LSAs', 'Leave & cover', 'Audit export']
+  const upcoming = ['Wellbeing', 'At-risk students', 'Non-submissions', 'LSAs', 'Leave & cover', 'Audit export']
 
   return (
     <div className="min-h-screen lg:flex">

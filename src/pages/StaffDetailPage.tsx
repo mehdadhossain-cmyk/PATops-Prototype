@@ -5,6 +5,8 @@ import {
   activeModules,
   campusName,
   canManageStaff,
+  CONTACT_GAP_DAYS,
+  patCommStats,
   fmtDate,
   fmtDateTime,
   fmtSchedule,
@@ -125,6 +127,19 @@ export function StaffDetailPage() {
             </>
           )}
 
+          {u.role === 'pat' && u.status === 'active' && (() => {
+            const s = patCommStats(db, u.id)
+            return (
+              <Card title="Call log" actions={<Link to={`/call-log?pat=${u.id}`} className="text-sm text-brand-600 hover:underline">Open call log</Link>}>
+                <div className="grid gap-4 sm:grid-cols-4">
+                  <Stat label={`Reached · ${CONTACT_GAP_DAYS}d`} value={`${s.coverage}%`} tone={s.coverage >= 70 ? 'good' : s.coverage >= 40 ? 'warn' : 'bad'} hint={`${s.reached30}/${s.students} students`} />
+                  <Stat label="Contacts 7d" value={s.contacts7} />
+                  <Stat label="Announcements" value={s.announcements30} hint={`last ${CONTACT_GAP_DAYS} days`} />
+                  <Stat label="Overdue follow-ups" value={s.overdueFollowUps} tone={s.overdueFollowUps ? 'bad' : 'good'} />
+                </div>
+              </Card>
+            )
+          })()}
           {u.role === 'pat' && (
             <Card title={`Groups · ${patStudentCount(db, u.id)} / ${PAT_STUDENT_CAP} students`}>
               {patGroups(db, u.id).length === 0 ? (

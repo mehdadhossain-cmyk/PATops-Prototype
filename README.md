@@ -30,8 +30,8 @@ PAT allocation is intentionally out of scope for this prototype.
 | 1 | Foundation: roles, campuses, staff accounts, profiles, activity log | ✅ Done |
 | 1 | **Onboarding & training tracking** (user story 1) | ✅ Done |
 | 2 | **Intakes, partner universities, groups & student records** (admin import) | ✅ Done |
-| 3 | Call / communication log (replaces the call-log Excel) | ⏳ Next |
-| 4 | Wellbeing plans: bi-weekly meeting & "logged in wellbeing app" tracking | ⏳ |
+| 3 | **Call / communication log** (replaces the call-log Excel) | ✅ Done |
+| 4 | Wellbeing plans: bi-weekly meeting & "logged in wellbeing app" tracking | ⏳ Next |
 | 5 | Weekly attendance import & at-risk students (<65%) with PAT + admin comment history | ⏳ |
 | 6 | Non-submission tracking per submission period | ⏳ |
 | 7 | LSA tracking | ⏳ |
@@ -80,6 +80,30 @@ PAT allocation is intentionally out of scope for this prototype.
 
 **PAT Lead**: the groups and students at their own campus.
 
+## Step 3: what you can test
+
+**PAT** (e.g. Sofia Rahman)
+- **Log contact** from the dashboard, the Call log, a student's page, or a group page. On a group page you can tick several students to log one contact for each of them.
+- Each entry records:
+  - channel (phone, WhatsApp, email, text, in person, Teams);
+  - who started it, and the outcome (reached, no answer, left message);
+  - reason, summary and time;
+  - an optional **follow-up date**.
+- **Group announcements** go to one or more groups by email or WhatsApp, and appear in every student's history in that group.
+- **Call log** has three tabs:
+  - **Log**: filters and CSV export;
+  - **Follow-ups**: open follow-ups, with overdue ones highlighted and a "Mark done" button;
+  - **Not contacted**: students not reached in the last 30 days, oldest first, each with a "Log contact" button.
+- Entries are never deleted. A mistake is marked **Entered in error** with a reason, which keeps the audit trail intact.
+- The student page shows the full **contact history** and when the student was last reached.
+
+**Lead / Admin / Manager**
+- **Call logs** shows, for every PAT, the share of their students reached in the last 30 days, contacts in the last 7 and 30 days, announcements, overdue follow-ups, and when they last logged. The list is sorted with the lowest reach first. Open any PAT to see their full log, and export everything to CSV.
+- The dashboard shows the PATs with the lowest reach, and each PAT's staff page shows their call-log stats.
+- Admins can log their own contacts too, for example retention calls. These appear on the student's history.
+
+Data is now saved in the browser's IndexedDB, which has more room than local storage. Data from earlier versions is upgraded automatically.
+
 ## Code layout
 
 ```
@@ -87,6 +111,8 @@ src/data/types.ts   domain model (backend-agnostic)
 src/data/seed.ts    demo data (6 campuses, ~40 staff, 6 training modules)
 src/data/seedAcademic.ts  demo universities, courses, intakes, ~80 groups, ~1,700 students
 src/data/importer.ts      CSV / Excel-paste parsing and row validation (+ tests)
+src/data/seedComms.ts     ~8 weeks of demo call-log history
+src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited
 src/pages/*         screens
