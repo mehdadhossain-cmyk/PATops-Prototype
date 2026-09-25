@@ -7,11 +7,12 @@ import { buildAttendanceSeed } from '../data/seedAttendance'
 import { buildSubmissionsSeed } from '../data/seedSubmissions'
 import { buildLsaSeed } from '../data/seedLsa'
 import { buildLeaveSeed } from '../data/seedLeave'
+import { buildTasksSeed } from '../data/seedTasks'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
 import type { RetentionStage } from '../data/types'
 import type { AttendanceRow, LsaRow, NonSubmissionRow } from '../data/importer'
-import type { CoverSlot, LeaveRequest, LeaveType, Lsa } from '../data/types'
+import type { AssignedTask, CoverSlot, LeaveRequest, LeaveType, Lsa } from '../data/types'
 import { statusAfterCover } from '../data/leave'
 import type { FollowUpStatus, NonSubmission, SubmissionPeriod } from '../data/types'
 import type { CommLog, Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User, WellbeingCase, WellbeingCategory } from '../data/types'
@@ -48,6 +49,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 6) next = { ...next, ...buildLsaSeed(next.groups, next.students), version: 7 }
   // v7 -> v8: add leave requests and cover.
   if (next.version === 7) next = { ...next, ...buildLeaveSeed(next.users, next.groups), version: 8 }
+  // v8 -> v9: add assigned tasks.
+  if (next.version === 8) next = { ...next, ...buildTasksSeed(next.users), version: 9 }
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -119,6 +122,9 @@ interface DbContextValue {
   addRiskNote: (studentId: string, text: string, stage: RetentionStage | null) => void
   savePeriod: (p: SubmissionPeriod) => void
   importNonSubmissions: (periodId: string, rows: NonSubmissionRow[], source: string) => void
+  createTask: (input: { title: string; description: string; dueDate: string | null; assigneeIds: string[]; personal: boolean }) => void
+  toggleTaskDone: (taskId: string, done: boolean) => void
+  deleteTask: (taskId: string) => void
   submitLeave: (input: { type: LeaveType; startDate: string; endDate: string; reason: string; covers: { date: string; groupId: string; coverPatId: string }[] }) => void
   respondCover: (slotId: string, accept: boolean, note: string) => void
   replaceCover: (slotId: string, coverPatId: string) => void
@@ -523,6 +529,30 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
             subjectUserId: patId,
           },
         )
+      },
+      createTask: (input) => {
+        if (!me) return
+        const t: AssignedTask = { id: uid('at'), ...input, createdBy: me.id, createdAt: now(), completions: [] }
+        mutate((d) => ({ ...d, assignedTasks: [...d.assignedTasks, t] }), input.personal
+          ? undefined
+          : { type: 'task.assigned', message: `Assigned "${input.title}" to ${input.assigneeIds.length} ${input.assigneeIds.length === 1 ? 'person' : 'people'}${input.dueDate ? `, due ${input.dueDate}` : ''}`, subjectUserId: null })
+      },
+      toggleTaskDone: (taskId, done) => {
+        if (!me) return
+        const t = db.assignedTasks.find((x) => x.id === taskId)
+        mutate(
+          (d) => ({
+            ...d,
+            assignedTasks: d.assignedTasks.map((x) =>
+              x.id !== taskId ? x : { ...x, completions: done ? [...x.completions.filter((c) => c.userId !== me.id), { userId: me.id, at: now() }] : x.completions.filter((c) => c.userId !== me.id) },
+            ),
+          }),
+          t && !t.personal ? { type: done ? 'task.done' : 'task.reopened', message: `${done ? 'Completed' : 'Reopened'} task "${t.title}"`, subjectUserId: me.id } : undefined,
+        )
+      },
+      deleteTask: (taskId) => {
+        const t = db.assignedTasks.find((x) => x.id === taskId)
+        mutate((d) => ({ ...d, assignedTasks: d.assignedTasks.filter((x) => x.id !== taskId) }), t && !t.personal ? { type: 'task.deleted', message: `Deleted assigned task "${t.title}"`, subjectUserId: null } : undefined)
       },
       submitLeave: (input) => {
         if (!me) return

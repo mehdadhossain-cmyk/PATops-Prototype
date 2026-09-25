@@ -437,6 +437,19 @@ export interface CoverSlot {
   note: string
 }
 
+/** A task an admin/lead assigns to staff (or a personal reminder, when assigned to yourself). */
+export interface AssignedTask {
+  id: string
+  title: string
+  description: string
+  dueDate: string | null
+  createdBy: string
+  createdAt: string
+  assigneeIds: string[]
+  completions: { userId: string; at: string }[]
+  personal: boolean
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -457,6 +470,7 @@ export interface DbState {
   lsaUpdates: LsaUpdate[]
   leaveRequests: LeaveRequest[]
   coverSlots: CoverSlot[]
+  assignedTasks: AssignedTask[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

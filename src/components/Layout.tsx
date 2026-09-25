@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { tasksFor } from '../data/tasks'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { campusName, canManageStudents, canManageTraining, canViewStaff } from '../data/logic'
 import { ROLE_LABEL } from '../data/types'
@@ -11,16 +12,23 @@ interface NavItem {
   icon: string
   show: boolean
   soon?: boolean
+  badge?: number
 }
 
 export function Layout() {
   const { db, me, logout } = useDb()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const urgent = useMemo(() => {
+    if (!me) return 0
+    const today = new Date().toISOString().slice(0, 10)
+    return tasksFor(db, me).filter((t) => t.due && t.due <= today).length
+  }, [db, me])
   if (!me) return null
 
   const nav: NavItem[] = [
     { to: '/', label: 'Dashboard', icon: '▦', show: true },
+    { to: '/tasks', label: 'My tasks', icon: '☑', show: true, badge: urgent },
     { to: '/profile', label: 'My profile', icon: '☺', show: true },
     { to: '/training', label: 'My training', icon: '✎', show: me.role === 'pat' || me.role === 'lead' },
     { to: '/groups', label: me.role === 'pat' ? 'My groups' : 'Groups', icon: '▤', show: true },
@@ -74,7 +82,8 @@ export function Layout() {
                 }
               >
                 <span className="w-4 text-center">{n.icon}</span>
-                {n.label}
+                <span className="flex-1">{n.label}</span>
+                {!!n.badge && <span className="rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white tabular-nums">{n.badge}</span>}
               </NavLink>
             ))}
           <div className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Coming next</div>

@@ -18,6 +18,7 @@ import { AttendancePage } from './pages/AttendancePage'
 import { NonSubmissionsPage } from './pages/NonSubmissionsPage'
 import { LsaPage } from './pages/LsaPage'
 import { LeavePage } from './pages/LeavePage'
+import { TasksPage } from './pages/TasksPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { ImportPage } from './pages/ImportPage'
@@ -54,6 +55,7 @@ function AppRoutes() {
         <Route path="non-submissions" element={<NonSubmissionsPage />} />
         <Route path="lsa" element={<LsaPage />} />
         <Route path="leave" element={<LeavePage />} />
+        <Route path="tasks" element={<TasksPage />} />
         {canManageStudents(me.role) && <Route path="attendance" element={<AttendancePage />} />}
         <Route path="students/:id" element={<StudentDetailPage />} />
         {staff && <Route path="intakes" element={<IntakesPage />} />}

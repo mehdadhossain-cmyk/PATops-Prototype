@@ -36,8 +36,8 @@ PAT allocation is intentionally out of scope for this prototype.
 | 6 | **Non-submission tracking** per submission period | ✅ Done |
 | 7 | **LSA tracking** (matches the PAT LSA records sheet) | ✅ Done |
 | 8 | **Leave requests**: dates → cover PATs accept → Lead → Manager | ✅ Done |
-| 9 | Unified PAT dashboard / task list with due dates | ⏳ Next |
-| 10 | One-click audit export of a PAT's full history | ⏳ |
+| 9 | **Unified task list** with due dates, plus assigned tasks | ✅ Done |
+| 10 | One-click audit export of a PAT's full history | ⏳ Next |
 
 ## Step 1: what you can test
 
@@ -203,6 +203,23 @@ Built on the existing **PAT LSA records sheet** (Student ID, Student Name, Campu
 
 Every step is recorded in the activity history of the PAT and their covers.
 
+## Step 9: what you can test
+
+**My tasks** (top of every dashboard and its own page, with a red badge in the menu for anything due today or overdue) gathers everything a person needs to do from every part of PATops, grouped into **Overdue / Due today / Next 7 days / Later / No fixed date**, and filterable by source:
+
+- **New joiners:** profile setup and training modules, by their due dates.
+- **Call log:** follow-ups you set, and students not reached in 30 days.
+- **Wellbeing:** forms to chase, meetings due or missed, and meetings to log.
+- **At risk:** students newly below 65%, and at-risk students with no action in 14 days.
+- **Non-submissions:** students not yet contacted, due by the period's follow-up date.
+- **LSAs:** follow-ups due or overdue.
+- **Leave and cover:** cover requests to answer, declined covers to replace, and leave to approve (Leads and the Manager).
+- **Team items** for Admins, Leads and the Manager: this week's attendance upload, new joiners ready to activate, overdue training, groups without a PAT, and assigned tasks past their due date.
+
+These tasks **clear themselves** when the real work is done, so there's nothing to tick twice.
+
+**Assigned tasks:** Admins, Leads and the Manager can give a task to all PATs, a campus or named people, with a due date. They can then see who has done it and who hasn't. PATs tick assigned tasks off in their list. Anyone can also add **personal reminders**.
+
 ## Code layout
 
 ```
@@ -222,6 +239,7 @@ src/data/lsa.ts           LSA status, sheet date/intake formats (+ tests)
 src/data/seedLsa.ts       demo LSAs (fake students only)
 src/data/leave.ts         sessions to cover, cover ranking/blocks, approval chain (+ tests)
 src/data/seedLeave.ts     demo leave requests at every stage
+src/data/tasks.ts         the unified task list built from every module (+ tests)
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited

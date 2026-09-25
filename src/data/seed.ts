@@ -16,8 +16,9 @@ import { buildAttendanceSeed } from './seedAttendance'
 import { buildSubmissionsSeed } from './seedSubmissions'
 import { buildLsaSeed } from './seedLsa'
 import { buildLeaveSeed } from './seedLeave'
+import { buildTasksSeed } from './seedTasks'
 
-export const DB_VERSION = 8
+export const DB_VERSION = 9
 
 const day = 24 * 60 * 60 * 1000
 const daysAgo = (n: number) => new Date(Date.now() - n * day).toISOString()
@@ -311,6 +312,7 @@ export function buildSeed(): DbState {
     ...buildSubmissionsSeed(academic.groups, academic.students),
     ...buildLsaSeed(academic.groups, academic.students),
     ...buildLeaveSeed(users, academic.groups),
+    ...buildTasksSeed(users),
     users,
     trainingModules: seedModules,
     trainingProgress: buildProgress(users),

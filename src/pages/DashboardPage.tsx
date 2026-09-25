@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CommEntry, LogContactModal, Toast } from '../components/Comms'
 import { CaseActionButtons } from '../components/Wellbeing'
+import { TaskList } from '../components/TaskList'
+import { bucketOf, sortTasks, tasksFor } from '../data/tasks'
 import { Sparkline } from '../components/AttendanceChart'
 import { AttendanceValue, StageBadge } from '../components/Risk'
 import { NO_ACTION_DAYS, RISK_THRESHOLD, riskRows } from '../data/risk'
@@ -14,7 +16,7 @@ import { caseActions, casePatId, compliance, visibleCases } from '../data/wellbe
 import { studentName } from '../data/logic'
 import { StaffStatusBadge } from '../components/StatusBadges'
 import { Button, Card, Empty, PageHeader, Progress, Stat, cx } from '../components/ui'
-import { activeModules, campusName, CONTACT_GAP_DAYS, openFollowUps, patCommStats, courseName, fmtDate, fmtSchedule, groupStudents, intakeLabel, isProfileComplete, moduleDueDate, needsTraining, PAT_STUDENT_CAP, patGroups, patStudentCount, progressFor, trainingSummary, visibleGroups, visibleStaff } from '../data/logic'
+import { campusName, CONTACT_GAP_DAYS, openFollowUps, patCommStats, courseName, fmtDate, fmtSchedule, groupStudents, intakeLabel, isProfileComplete, needsTraining, PAT_STUDENT_CAP, patGroups, patStudentCount, trainingSummary, visibleGroups, visibleStaff } from '../data/logic'
 import type { User } from '../data/types'
 import { useDb } from '../store/db'
 
@@ -28,7 +30,6 @@ function PatDashboard({ me }: { me: User }) {
   const { db } = useDb()
   const profileDone = isProfileComplete(me)
   const t = trainingSummary(db, me)
-  const now = new Date()
   const first = me.name.split(' ')[0]
 
   const steps = [
@@ -38,10 +39,6 @@ function PatDashboard({ me }: { me: User }) {
     { label: 'Get allocated to a student group', done: me.status === 'active' },
   ]
 
-  const todo = activeModules(db)
-    .filter((m) => m.required && !progressFor(db, me.id, m.id)?.completedAt)
-    .map((m) => ({ m, due: moduleDueDate(me, m) }))
-    .sort((a, b) => +a.due - +b.due)
 
   return (
     <div>
@@ -73,36 +70,14 @@ function PatDashboard({ me }: { me: User }) {
       )}
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="My tasks" actions={<Link to="/training" className="text-sm text-brand-600 hover:underline">All training</Link>}>
-          {!profileDone ? (
-            <Empty>Complete your profile to see your tasks.</Empty>
-          ) : todo.length === 0 ? (
-            <Empty>You're all caught up. ✓</Empty>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {todo.map(({ m, due }) => (
-                <li key={m.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <Link to={`/training/${m.id}`} className="hover:text-brand-600">Training: {m.title}</Link>
-                  <span className={cx('whitespace-nowrap text-xs', due < now ? 'font-medium text-rose-600' : 'text-slate-500')}>
-                    {due < now ? 'Overdue · ' : 'Due '}{fmtDate(due)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-        <MyGroupsCard me={me} />
+        <TodayCard me={me} className="lg:col-span-2" />
+        <MyGroupsCard me={me} className="lg:col-span-2" />
         {me.status === 'active' && <LeaveCard me={me} />}
         {me.status === 'active' && <NonSubmissionCard me={me} />}
         {me.status === 'active' && <LsaCard me={me} />}
         {me.status === 'active' && <AtRiskCard me={me} />}
         {me.status === 'active' && <WellbeingCard me={me} />}
         {me.status === 'active' && <CallLogCard me={me} />}
-        <Card title="Coming in the next steps" className="lg:col-span-2">
-          <p className="text-sm text-slate-500">
-            This dashboard will also show at-risk students, wellbeing meetings due, non-submission follow-ups, LSAs and leave requests awaiting your cover response.
-          </p>
-        </Card>
       </div>
     </div>
   )
@@ -156,13 +131,13 @@ function CallLogCard({ me }: { me: User }) {
   )
 }
 
-function MyGroupsCard({ me }: { me: User }) {
+function MyGroupsCard({ me, className }: { me: User; className?: string }) {
   const { db } = useDb()
   const groups = patGroups(db, me.id)
   const total = patStudentCount(db, me.id)
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 3)
   return (
-    <Card title={`My groups · ${total} students`} actions={<Link to="/groups" className="text-sm text-brand-600 hover:underline">All groups</Link>}>
+    <Card title={`My groups · ${total} students`} className={className} actions={<Link to="/groups" className="text-sm text-brand-600 hover:underline">All groups</Link>}>
       {groups.length === 0 ? (
         <Empty>No groups yet. You'll see them here once a PAT Admin allocates you.</Empty>
       ) : (
@@ -207,6 +182,10 @@ function TeamDashboard({ me }: { me: User }) {
         <Stat label="New joiners onboarding" value={newJoiners.length} tone={newJoiners.length ? 'warn' : 'default'} />
         <Stat label="Overdue training" value={withOverdue.length} tone={withOverdue.length ? 'bad' : 'good'} hint="Staff with at least one overdue module" />
         <Stat label="Ready for allocation" value={ready.length} tone={ready.length ? 'good' : 'default'} hint="Training complete, awaiting a group" />
+      </div>
+
+      <div className="mb-5">
+        <TodayCard me={me} />
       </div>
 
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
@@ -645,5 +624,22 @@ function LeaveApprovalsCard({ me }: { me: User }) {
         )}
       </Card>
     </div>
+  )
+}
+
+function TodayCard({ me, className }: { me: User; className?: string }) {
+  const { db } = useDb()
+  const tasks = sortTasks(tasksFor(db, me))
+  const today = new Date().toISOString().slice(0, 10)
+  const overdue = tasks.filter((t) => bucketOf(t, today) === 'overdue').length
+  const dueToday = tasks.filter((t) => bucketOf(t, today) === 'today').length
+  return (
+    <Card
+      title={`My tasks · ${overdue} overdue · ${dueToday} due today`}
+      className={className}
+      actions={<Link to="/tasks" className="text-sm text-brand-600 hover:underline">All {tasks.length} tasks</Link>}
+    >
+      {tasks.length === 0 ? <Empty>You're all caught up. ✓</Empty> : <TaskList tasks={tasks} limit={8} />}
+    </Card>
   )
 }
