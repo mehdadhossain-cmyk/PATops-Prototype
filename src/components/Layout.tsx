@@ -45,15 +45,16 @@ export function Layout() {
     { to: '/staff', label: 'Staff', icon: '👥', show: canViewStaff(me.role) },
     { to: '/training-tracker', label: 'Training tracker', icon: '✓', show: canViewStaff(me.role) },
     { to: '/training-admin', label: 'Training content', icon: '⚙', show: canManageTraining(me.role) },
+    { to: canViewStaff(me.role) ? '/audit' : '/audit/me', label: canViewStaff(me.role) ? 'Audit export' : 'My audit pack', icon: '⤓', show: true },
     { to: '/settings', label: 'Settings', icon: '⚑', show: me.role === 'admin' || me.role === 'manager' },
   ]
 
-  const upcoming = ['Audit export']
 
   return (
     <div className="min-h-screen lg:flex">
       <aside
         className={cx(
+          'print:hidden',
           'fixed inset-y-0 left-0 z-40 w-64 transform overflow-y-auto border-r border-slate-200 bg-white transition lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
@@ -86,19 +87,12 @@ export function Layout() {
                 {!!n.badge && <span className="rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white tabular-nums">{n.badge}</span>}
               </NavLink>
             ))}
-          <div className="px-3 pt-5 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Coming next</div>
-          {upcoming.map((u) => (
-            <div key={u} className="flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm text-slate-400">
-              <span className="w-4 text-center">·</span>
-              {u}
-            </div>
-          ))}
         </nav>
       </aside>
       {open && <div className="fixed inset-0 z-30 bg-slate-900/30 lg:hidden" onClick={() => setOpen(false)} />}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
+        <header className="print:hidden flex h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
           <button className="rounded p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
             ☰
           </button>

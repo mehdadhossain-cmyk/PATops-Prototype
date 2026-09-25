@@ -122,6 +122,7 @@ interface DbContextValue {
   addRiskNote: (studentId: string, text: string, stage: RetentionStage | null) => void
   savePeriod: (p: SubmissionPeriod) => void
   importNonSubmissions: (periodId: string, rows: NonSubmissionRow[], source: string) => void
+  recordAuditExport: (userId: string, format: string, range: string) => void
   createTask: (input: { title: string; description: string; dueDate: string | null; assigneeIds: string[]; personal: boolean }) => void
   toggleTaskDone: (taskId: string, done: boolean) => void
   deleteTask: (taskId: string) => void
@@ -529,6 +530,10 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
             subjectUserId: patId,
           },
         )
+      },
+      recordAuditExport: (userId, format, range) => {
+        const u = db.users.find((x) => x.id === userId)
+        mutate((d) => d, { type: 'audit.exported', message: `Audit pack for ${u?.name} exported as ${format} (${range})`, subjectUserId: userId })
       },
       createTask: (input) => {
         if (!me) return

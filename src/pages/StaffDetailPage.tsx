@@ -54,7 +54,9 @@ export function StaffDetailPage() {
           </span>
         }
         actions={
-          manage && (
+          <>
+            <Link to={`/audit/${u.id}`}><Button variant="secondary">Export audit pack</Button></Link>
+          {manage && (
             <>
               <Link to={`/staff/${u.id}/edit`}><Button variant="secondary">Edit profile</Button></Link>
               {u.status === 'onboarding' && t?.complete && (
@@ -63,7 +65,8 @@ export function StaffDetailPage() {
               {u.status === 'active' && <Button variant="secondary" onClick={() => setStaffStatus(u.id, 'inactive')}>Deactivate</Button>}
               {u.status === 'inactive' && <Button variant="secondary" onClick={() => setStaffStatus(u.id, 'active')}>Reactivate</Button>}
             </>
-          )
+          )}
+          </>
         }
       />
 

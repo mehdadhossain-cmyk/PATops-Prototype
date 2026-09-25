@@ -104,6 +104,10 @@ export function campusName(db: DbState, id: string | null): string {
 export const fmtDate = (d: string | Date | null | undefined) =>
   d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
+/** Full timestamp including the year, for audit records. */
+export const fmtStamp = (d: string | Date | null | undefined) =>
+  d ? new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+
 export const fmtDateTime = (d: string | Date | null | undefined) =>
   d
     ? new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })

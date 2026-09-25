@@ -37,7 +37,7 @@ PAT allocation is intentionally out of scope for this prototype.
 | 7 | **LSA tracking** (matches the PAT LSA records sheet) | ✅ Done |
 | 8 | **Leave requests**: dates → cover PATs accept → Lead → Manager | ✅ Done |
 | 9 | **Unified task list** with due dates, plus assigned tasks | ✅ Done |
-| 10 | One-click audit export of a PAT's full history | ⏳ Next |
+| 10 | **One-click audit export** of a PAT's full history (report + spreadsheet) | ✅ Done |
 
 ## Step 1: what you can test
 
@@ -220,6 +220,25 @@ These tasks **clear themselves** when the real work is done, so there's nothing 
 
 **Assigned tasks:** Admins, Leads and the Manager can give a task to all PATs, a campus or named people, with a due date. They can then see who has done it and who hasn't. PATs tick assigned tasks off in their list. Anyone can also add **personal reminders**.
 
+## Step 10: what you can test
+
+**Export audit pack** is on every staff page, and under **Audit export** in the menu. PATs get **My audit pack** for themselves.
+- **Who can export:** Admins and the Manager for anyone, Leads for their campus, and everyone for themselves.
+- **What's in it:** everything PATops holds about the person's work, in 12 sections:
+  - training record and current groups;
+  - every call-log entry, including entries marked in error;
+  - wellbeing cases and each fortnight;
+  - retention notes, non-submission follow-ups, LSAs and their change history;
+  - leave requests, and cover given to colleagues;
+  - assigned tasks and the full activity history.
+- **Date range:** choose a from/to date, or leave both empty for all records.
+- **Two formats:**
+  - **Spreadsheet (.xlsx):** a summary tab plus one tab per section, with bold, frozen header rows.
+  - **Report:** shown on screen, printable to PDF (landscape A4, with the menu and buttons hidden), and downloadable as a single **.html** file that opens and prints in any browser.
+- Every export is **recorded in the person's activity history**: who exported it, the format and the date range.
+
+The CSV export buttons across the app (and these exports) also work inside the hosted demo page, via its download feature.
+
 ## Code layout
 
 ```
@@ -240,6 +259,10 @@ src/data/seedLsa.ts       demo LSAs (fake students only)
 src/data/leave.ts         sessions to cover, cover ranking/blocks, approval chain (+ tests)
 src/data/seedLeave.ts     demo leave requests at every stage
 src/data/tasks.ts         the unified task list built from every module (+ tests)
+src/data/audit.ts         audit pack sections for one person (+ tests)
+src/lib/auditExport.ts    audit pack → .xlsx workbook and standalone HTML report
+src/lib/xlsx.ts           small .xlsx writer (fflate)
+src/lib/download.ts       file saving (works in the hosted demo and normal browsers)
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited
