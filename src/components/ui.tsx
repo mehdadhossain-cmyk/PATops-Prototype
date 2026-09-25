@@ -148,3 +148,45 @@ export function ConfirmButton({ label, confirmLabel, onConfirm, variant = 'dange
     </span>
   )
 }
+
+/** Copies text to the clipboard; falls back to showing the text selected if the clipboard is blocked. */
+export function CopyButton({ text, label = 'Copy', className }: { text: string; label?: string; className?: string }) {
+  const [state, setState] = useState<'idle' | 'done' | 'failed'>('idle')
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => {
+          navigator.clipboard.writeText(text).then(
+            () => {
+              setState('done')
+              setTimeout(() => setState('idle'), 1500)
+            },
+            () => setState('failed'),
+          )
+        }}
+        className={cx('rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50', className)}
+      >
+        {state === 'done' ? 'Copied ✓' : label}
+      </button>
+      {state === 'failed' && <input readOnly value={text} onFocus={(e) => e.target.select()} autoFocus className="w-64 rounded border border-slate-300 px-2 py-1 text-xs" />}
+    </span>
+  )
+}
+
+export function Tabs<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
+  return (
+    <div className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={cx('rounded-md px-3 py-1.5 text-sm', value === o.value ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100')}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}

@@ -7,6 +7,11 @@ import {
   canManageStaff,
   fmtDate,
   fmtDateTime,
+  fmtSchedule,
+  groupStudents,
+  PAT_STUDENT_CAP,
+  patGroups,
+  patStudentCount,
   isProfileComplete,
   moduleDueDate,
   moduleStatus,
@@ -118,6 +123,23 @@ export function StaffDetailPage() {
                 </div>
               </Card>
             </>
+          )}
+
+          {u.role === 'pat' && (
+            <Card title={`Groups · ${patStudentCount(db, u.id)} / ${PAT_STUDENT_CAP} students`}>
+              {patGroups(db, u.id).length === 0 ? (
+                <Empty>No groups allocated.</Empty>
+              ) : (
+                <ul className="divide-y divide-slate-100 text-sm">
+                  {patGroups(db, u.id).map((g) => (
+                    <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                      <Link to={`/groups/${g.id}`} className="font-mono font-medium text-brand-700 hover:underline">{g.code}</Link>
+                      <span className="text-slate-500">{fmtSchedule(g)} · {groupStudents(db, g.id).length} students</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           )}
 
           <Card title="Activity history">

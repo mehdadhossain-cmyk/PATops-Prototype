@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { StaffStatusBadge } from '../components/StatusBadges'
 import { Button, Card, Empty, PageHeader, Progress, Select, Stat, cx } from '../components/ui'
 import { activeModules, campusName, moduleDueDate, needsTraining, progressFor, trainingSummary, visibleStaff } from '../data/logic'
+import { downloadCsv } from '../lib/csv'
 import { useDb } from '../store/db'
 
 type Filter = 'all' | 'incomplete' | 'overdue'
@@ -42,11 +43,7 @@ export function TrainingTrackerPage() {
         return p?.completedAt ? `Completed ${p.completedAt.slice(0, 10)}` : p?.startedAt ? 'In progress' : 'Not started'
       }),
     ])
-    const csv = [header, ...lines].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-    a.download = `training-tracker-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
+    downloadCsv(`training-tracker-${new Date().toISOString().slice(0, 10)}.csv`, [header, ...lines])
   }
 
   return (

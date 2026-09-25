@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { buildSeed, DB_VERSION } from '../data/seed'
+import { buildAcademicSeed } from '../data/seedAcademic'
 import { isProfileComplete, scoreQuiz } from '../data/logic'
-import type { DbState, Role, TrainingModule, TrainingProgress, User } from '../data/types'
+import type { Course, DbState, Group, Intake, Role, Student, TrainingModule, TrainingProgress, University, User } from '../data/types'
 
 const STORAGE_KEY = 'patops.db'
 const SESSION_KEY = 'patops.session'
@@ -12,6 +13,8 @@ function load(): DbState {
     if (raw) {
       const parsed = JSON.parse(raw) as DbState
       if (parsed.version === DB_VERSION) return parsed
+      // v1 -> v2: keep staff and training progress, add the academic structure.
+      if (parsed.version === 1) return { ...parsed, ...buildAcademicSeed(parsed.users, parsed.campuses), version: DB_VERSION }
     }
   } catch {
     // fall through to seed
@@ -63,6 +66,14 @@ interface DbContextValue {
   startModule: (moduleId: string) => void
   acknowledgeModule: (moduleId: string) => void
   submitQuiz: (moduleId: string, answers: number[]) => { score: number; passed: boolean }
+  saveUniversity: (u: University) => void
+  saveCourse: (c: Course) => void
+  saveIntake: (i: Intake) => void
+  saveGroup: (g: Group) => void
+  setGroupPat: (groupId: string, patId: string | null) => void
+  updateStudent: (id: string, patch: Partial<Student>) => void
+  importStudents: (rows: Student[], source: string) => void
+  importGroups: (rows: Group[], source: string) => void
 }
 
 const DbContext = createContext<DbContextValue | null>(null)
@@ -236,8 +247,75 @@ export function DbProvider({ children }: { children: ReactNode }) {
         )
         return { score, passed }
       },
+      saveUniversity: (u) => {
+        const exists = db.universities.some((x) => x.id === u.id)
+        mutate((d) => ({ ...d, universities: exists ? d.universities.map((x) => (x.id === u.id ? u : x)) : [...d.universities, u] }), {
+          type: 'university.saved', message: `${exists ? 'Updated' : 'Added'} partner university ${u.name}`, subjectUserId: null,
+        })
+      },
+      saveCourse: (c) => {
+        const exists = db.courses.some((x) => x.id === c.id)
+        mutate((d) => ({ ...d, courses: exists ? d.courses.map((x) => (x.id === c.id ? c : x)) : [...d.courses, c] }), {
+          type: 'course.saved', message: `${exists ? 'Updated' : 'Added'} course ${c.name}`, subjectUserId: null,
+        })
+      },
+      saveIntake: (i) => {
+        const exists = db.intakes.some((x) => x.id === i.id)
+        mutate((d) => ({ ...d, intakes: exists ? d.intakes.map((x) => (x.id === i.id ? i : x)) : [...d.intakes, i] }), {
+          type: 'intake.saved', message: `${exists ? 'Updated' : 'Created'} intake ${i.name}`, subjectUserId: null,
+        })
+      },
+      saveGroup: (g) => {
+        const exists = db.groups.some((x) => x.id === g.id)
+        mutate((d) => ({ ...d, groups: exists ? d.groups.map((x) => (x.id === g.id ? g : x)) : [...d.groups, g] }), {
+          type: 'group.saved', message: `${exists ? 'Updated' : 'Created'} group ${g.code}`, subjectUserId: null,
+        })
+      },
+      setGroupPat: (groupId, patId) => {
+        const g = db.groups.find((x) => x.id === groupId)
+        if (!g || g.patId === patId) return
+        const name = (id: string | null) => db.users.find((u) => u.id === id)?.name
+        const events = [
+          g.patId && { subjectUserId: g.patId, type: 'group.unassigned', message: `Removed as PAT of ${g.code}` },
+          patId && { subjectUserId: patId, type: 'group.assigned', message: `Assigned as PAT of ${g.code}${g.patId ? ` (previously ${name(g.patId)})` : ''}` },
+        ].filter(Boolean) as { subjectUserId: string; type: string; message: string }[]
+        setDb((d) => ({
+          ...d,
+          groups: d.groups.map((x) => (x.id === groupId ? { ...x, patId } : x)),
+          audit: [...d.audit, ...events.map((e) => ({ id: uid('ev'), at: now(), actorId: meId ?? 'system', ...e }))],
+        }))
+      },
+      updateStudent: (id, patch) => {
+        const s = db.students.find((x) => x.id === id)
+        mutate((d) => ({ ...d, students: d.students.map((x) => (x.id === id ? { ...x, ...patch } : x)) }), {
+          type: 'student.updated', message: `Updated student record ${s ? `${s.firstName} ${s.lastName}` : id}`, subjectUserId: null,
+        })
+      },
+      importStudents: (rows, source) => {
+        const byId = new Map(rows.map((r) => [r.id, r]))
+        mutate(
+          (d) => {
+            const existing = new Set(d.students.map((s) => s.id))
+            return {
+              ...d,
+              students: [...d.students.map((s) => byId.get(s.id) ?? s), ...rows.filter((r) => !existing.has(r.id))],
+            }
+          },
+          { type: 'students.imported', message: `Imported ${rows.length} student records from ${source}`, subjectUserId: null },
+        )
+      },
+      importGroups: (rows, source) => {
+        const byId = new Map(rows.map((r) => [r.id, r]))
+        mutate(
+          (d) => {
+            const existing = new Set(d.groups.map((g) => g.id))
+            return { ...d, groups: [...d.groups.map((g) => byId.get(g.id) ?? g), ...rows.filter((r) => !existing.has(r.id))] }
+          },
+          { type: 'groups.imported', message: `Imported ${rows.length} groups from ${source}`, subjectUserId: null },
+        )
+      },
     }
-  }, [db, me, mutate, upsertProgress])
+  }, [db, me, meId, mutate, upsertProgress])
 
   return <DbContext.Provider value={value}>{children}</DbContext.Provider>
 }

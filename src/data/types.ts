@@ -101,9 +101,71 @@ export interface AuditEvent {
   message: string
 }
 
+export interface University {
+  id: string
+  name: string
+  shortName: string
+}
+
+export interface Course {
+  id: string
+  name: string
+  universityId: string
+}
+
+export type IntakeStatus = 'planning' | 'active' | 'closed'
+
+/** A cohort start for one partner university, e.g. "UoW September 2026". */
+export interface Intake {
+  id: string
+  universityId: string
+  name: string
+  startDate: string // ISO date
+  endDate: string // ISO date, expected programme end
+  status: IntakeStatus
+}
+
+/** A teaching group. Group membership is decided by other UKMC departments and imported here. */
+export interface Group {
+  id: string
+  code: string
+  intakeId: string
+  courseId: string
+  campusId: string
+  shift: Shift
+  classDays: Weekday[]
+  startTime: string // "09:00"
+  endTime: string // "13:00"
+  patId: string | null
+}
+
+export type StudentStatus = 'active' | 'interrupted' | 'withdrawn'
+
+export interface Student {
+  id: string
+  firstName: string
+  lastName: string
+  personalEmail: string
+  uniEmail: string
+  phone: string
+  emergencyContactName: string
+  emergencyContactPhone: string
+  /** UKMC EBS person code. */
+  ebsPersonCode: string
+  /** Partner university student ID. */
+  uniStudentId: string
+  groupId: string
+  status: StudentStatus
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
+  universities: University[]
+  courses: Course[]
+  intakes: Intake[]
+  groups: Group[]
+  students: Student[]
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

@@ -1,6 +1,6 @@
 import { HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { Layout } from './components/Layout'
-import { canManageTraining, canViewStaff } from './data/logic'
+import { canManageStudents, canManageTraining, canViewStaff } from './data/logic'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { ModulePage } from './pages/ModulePage'
@@ -11,6 +11,12 @@ import { StaffDetailPage } from './pages/StaffDetailPage'
 import { StaffPage } from './pages/StaffPage'
 import { TrainingAdminPage } from './pages/TrainingAdminPage'
 import { TrainingTrackerPage } from './pages/TrainingTrackerPage'
+import { GroupDetailPage } from './pages/GroupDetailPage'
+import { GroupsPage } from './pages/GroupsPage'
+import { ImportPage } from './pages/ImportPage'
+import { IntakesPage } from './pages/IntakesPage'
+import { StudentDetailPage } from './pages/StudentDetailPage'
+import { StudentsPage } from './pages/StudentsPage'
 import { DbProvider, useDb } from './store/db'
 
 /** Remount the module page per module so quiz state resets between modules. */
@@ -32,6 +38,12 @@ function AppRoutes() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="training" element={<MyTrainingPage />} />
         <Route path="training/:moduleId" element={<KeyedModulePage />} />
+        <Route path="groups" element={<GroupsPage />} />
+        <Route path="groups/:id" element={<GroupDetailPage />} />
+        <Route path="students" element={<StudentsPage />} />
+        <Route path="students/:id" element={<StudentDetailPage />} />
+        {staff && <Route path="intakes" element={<IntakesPage />} />}
+        {canManageStudents(me.role) && <Route path="import" element={<ImportPage />} />}
         {staff && <Route path="staff" element={<StaffPage />} />}
         {staff && <Route path="staff/:id" element={<StaffDetailPage />} />}
         {staff && <Route path="staff/:id/edit" element={<ProfilePage />} />}

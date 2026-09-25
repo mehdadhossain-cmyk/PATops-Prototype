@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { campusName, canManageTraining, canViewStaff } from '../data/logic'
+import { campusName, canManageStudents, canManageTraining, canViewStaff } from '../data/logic'
 import { ROLE_LABEL } from '../data/types'
 import { useDb } from '../store/db'
 import { Avatar, cx } from './ui'
@@ -23,13 +23,17 @@ export function Layout() {
     { to: '/', label: 'Dashboard', icon: '▦', show: true },
     { to: '/profile', label: 'My profile', icon: '☺', show: true },
     { to: '/training', label: 'My training', icon: '✎', show: me.role === 'pat' || me.role === 'lead' },
+    { to: '/groups', label: me.role === 'pat' ? 'My groups' : 'Groups', icon: '▤', show: true },
+    { to: '/students', label: me.role === 'pat' ? 'My students' : 'Students', icon: '🎓', show: true },
+    { to: '/intakes', label: 'Intakes', icon: '◷', show: canViewStaff(me.role) },
+    { to: '/import', label: 'Import data', icon: '⇪', show: canManageStudents(me.role) },
     { to: '/staff', label: 'Staff', icon: '👥', show: canViewStaff(me.role) },
     { to: '/training-tracker', label: 'Training tracker', icon: '✓', show: canViewStaff(me.role) },
     { to: '/training-admin', label: 'Training content', icon: '⚙', show: canManageTraining(me.role) },
     { to: '/settings', label: 'Settings', icon: '⚑', show: me.role === 'admin' || me.role === 'manager' },
   ]
 
-  const upcoming = ['Students & groups', 'Call log', 'Wellbeing', 'At-risk students', 'Non-submissions', 'LSAs', 'Leave & cover', 'Audit export']
+  const upcoming = ['Call log', 'Wellbeing', 'At-risk students', 'Non-submissions', 'LSAs', 'Leave & cover', 'Audit export']
 
   return (
     <div className="min-h-screen lg:flex">

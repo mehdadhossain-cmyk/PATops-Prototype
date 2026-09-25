@@ -1,6 +1,6 @@
 // Pure, UI-independent business rules. Easy to unit test and to move
 // server-side later.
-import type { DbState, Role, TrainingModule, TrainingProgress, User } from './types'
+import type { DbState, Group, Role, Student, TrainingModule, TrainingProgress, User } from './types'
 
 const day = 24 * 60 * 60 * 1000
 
@@ -108,3 +108,50 @@ export const fmtDateTime = (d: string | Date | null | undefined) =>
   d
     ? new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : '—'
+
+// ---- Academic structure ----------------------------------------------------
+
+/** Maximum students a PAT may hold (allocation rule from the PAT team). */
+export const PAT_STUDENT_CAP = 200
+
+export const canManageStudents = (r: Role) => r === 'admin' || r === 'manager'
+
+export function intakeLabel(db: DbState, intakeId: string): string {
+  const i = db.intakes.find((x) => x.id === intakeId)
+  if (!i) return 'Unknown intake'
+  const uni = db.universities.find((u) => u.id === i.universityId)
+  return `${uni?.shortName ?? '?'} ${i.name}`
+}
+
+export const courseName = (db: DbState, id: string) => db.courses.find((c) => c.id === id)?.name ?? 'Unknown course'
+export const userName = (db: DbState, id: string | null) => (id ? (db.users.find((u) => u.id === id)?.name ?? 'Unknown') : '—')
+
+export function groupStudents(db: DbState, groupId: string, includeInactive = false): Student[] {
+  return db.students.filter((s) => s.groupId === groupId && (includeInactive || s.status === 'active'))
+}
+
+export function patGroups(db: DbState, patId: string): Group[] {
+  return db.groups.filter((g) => g.patId === patId)
+}
+
+export function patStudentCount(db: DbState, patId: string): number {
+  const ids = new Set(patGroups(db, patId).map((g) => g.id))
+  return db.students.filter((s) => ids.has(s.groupId) && s.status === 'active').length
+}
+
+/** Groups a viewer may see: PATs their own, leads their campus, admins/manager everything. */
+export function visibleGroups(db: DbState, viewer: User): Group[] {
+  if (viewer.role === 'pat') return patGroups(db, viewer.id)
+  if (viewer.role === 'lead') return db.groups.filter((g) => g.campusId === viewer.campusId)
+  return db.groups
+}
+
+export function visibleStudents(db: DbState, viewer: User): Student[] {
+  if (viewer.role === 'admin' || viewer.role === 'manager') return db.students
+  const ids = new Set(visibleGroups(db, viewer).map((g) => g.id))
+  return db.students.filter((s) => ids.has(s.groupId))
+}
+
+export const studentName = (s: Student) => `${s.firstName} ${s.lastName}`
+
+export const fmtSchedule = (g: Group) => `${g.classDays.join(' & ')} · ${g.startTime}–${g.endTime}`

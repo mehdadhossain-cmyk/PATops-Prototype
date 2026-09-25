@@ -9,8 +9,9 @@ import type {
   User,
   Weekday,
 } from './types'
+import { buildAcademicSeed } from './seedAcademic'
 
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 
 const day = 24 * 60 * 60 * 1000
 const daysAgo = (n: number) => new Date(Date.now() - n * day).toISOString()
@@ -296,6 +297,7 @@ export function buildSeed(): DbState {
   return {
     version: DB_VERSION,
     campuses: seedCampuses,
+    ...buildAcademicSeed(users, seedCampuses),
     users,
     trainingModules: seedModules,
     trainingProgress: buildProgress(users),

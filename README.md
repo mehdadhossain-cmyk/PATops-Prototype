@@ -12,6 +12,7 @@ It is built to test each feature idea with real users before committing to a ful
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # type-check + production build
+npm test         # unit tests (importer)
 ```
 
 ## Roles
@@ -28,8 +29,8 @@ PAT allocation is intentionally out of scope for this prototype.
 |---|---|---|
 | 1 | Foundation: roles, campuses, staff accounts, profiles, activity log | ✅ Done |
 | 1 | **Onboarding & training tracking** (user story 1) | ✅ Done |
-| 2 | Intakes, partner universities, groups & student records (admin import) | ⏳ Next |
-| 3 | Call / communication log (replaces the call-log Excel) | ⏳ |
+| 2 | **Intakes, partner universities, groups & student records** (admin import) | ✅ Done |
+| 3 | Call / communication log (replaces the call-log Excel) | ⏳ Next |
 | 4 | Wellbeing plans: bi-weekly meeting & "logged in wellbeing app" tracking | ⏳ |
 | 5 | Weekly attendance import & at-risk students (<65%) with PAT + admin comment history | ⏳ |
 | 6 | Non-submission tracking per submission period | ⏳ |
@@ -58,11 +59,34 @@ PAT allocation is intentionally out of scope for this prototype.
 
 **PAT Lead**: the same views, but scoped to their own campus only.
 
+## Step 2: what you can test
+
+**PAT Admin / Manager**
+- **Intakes**: every partner university's intakes (including the planned **January 2027** intake), with group, student and "groups without a PAT" counts. You can create and edit intakes.
+- **Groups**: filter by intake, campus, course, or "without a PAT". Each group page shows the timetable, the PAT and the full student contact list. From there you can:
+  - copy every student email in one click (for announcements);
+  - export the list as CSV;
+  - assign or change the PAT by hand. The allocation rules (shift, work days, max 2 groups a day, 200-student limit) show as warnings only, because automated allocation is out of scope.
+- **Import data**: upload a CSV, or paste cells straight from Excel, for either:
+  - **students**, matched on EBS person code, so you can add new students and move existing ones between groups; or
+  - **groups**, the academic team's group list for a new intake.
+
+  Every row is checked before anything is saved. It flags bad emails, unknown group codes, duplicate IDs, unknown campuses or courses, and bad times. **Load example data** gives you a sample to try.
+- **Students**: search everyone by name, EBS code, uni ID, email or phone, and edit a student's record.
+- **Settings**: rename the placeholder partner universities and add courses.
+- **Dashboard**: shows the groups still needing a PAT for each intake, and PAT workload against the 200-student limit.
+
+**PAT**: **My groups** (timetable, student count against the 200 limit), each group's contact list with copy buttons, **My students** search, and a dashboard card showing today's classes.
+
+**PAT Lead**: the groups and students at their own campus.
+
 ## Code layout
 
 ```
 src/data/types.ts   domain model (backend-agnostic)
 src/data/seed.ts    demo data (6 campuses, ~40 staff, 6 training modules)
+src/data/seedAcademic.ts  demo universities, courses, intakes, ~80 groups, ~1,700 students
+src/data/importer.ts      CSV / Excel-paste parsing and row validation (+ tests)
 src/data/logic.ts   pure business rules + permissions (easy to move server-side)
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited
 src/pages/*         screens

@@ -1,5 +1,5 @@
 import type { ModuleStatus } from '../data/logic'
-import { ROLE_LABEL, type Role, type StaffStatus } from '../data/types'
+import { ROLE_LABEL, type Role, type StaffStatus, type StudentStatus } from '../data/types'
 import { Badge } from './ui'
 
 export function StaffStatusBadge({ status }: { status: StaffStatus }) {
@@ -24,4 +24,10 @@ export function ModuleStatusBadge({ status, overdue }: { status: ModuleStatus; o
   if (overdue) return <Badge tone="red">Overdue</Badge>
   if (status === 'in_progress') return <Badge tone="amber">In progress</Badge>
   return <Badge>Not started</Badge>
+}
+
+export function StudentStatusBadge({ status }: { status: StudentStatus }) {
+  const map = { active: ['Active', 'green'], interrupted: ['Interrupted', 'amber'], withdrawn: ['Withdrawn', 'slate'] } as const
+  const [label, tone] = map[status]
+  return <Badge tone={tone}>{label}</Badge>
 }
