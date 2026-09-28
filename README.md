@@ -15,6 +15,13 @@ npm run build    # type-check + production build
 npm test         # unit tests (importer)
 ```
 
+## Publish on GitHub Pages
+
+`.github/workflows/pages.yml` builds, tests and deploys the app on every push.
+One-time setup: **Settings → Pages → Source: GitHub Actions**. Pages on a private repository
+needs a paid GitHub plan; otherwise make the repository public (all data in it is fake).
+The site is then at `https://<owner>.github.io/PATops-Prototype/`.
+
 ## Roles
 
 `PAT Manager → PAT Admin (all campuses) → PAT Lead (one per campus) → PAT`
