@@ -55,7 +55,7 @@ function nextName() {
   return `${first} ${last}`
 }
 
-const emailFor = (name: string) => `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@ukmc.ac.uk`
+const emailFor = (name: string) => `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@example.ac.uk`
 
 function makeUser(
   id: string,
@@ -129,9 +129,9 @@ const q = (id: string, question: string, options: string[], answerIndex: number)
 export const seedModules: TrainingModule[] = [
   {
     id: 'm-welcome',
-    title: 'Welcome to UKMC and the PAT role',
+    title: 'Welcome to the college and the PAT role',
     description: 'Who we work with, how the PAT team is structured and what a PAT is responsible for.',
-    content: `UKMC delivers undergraduate programmes in person on behalf of partner universities (e.g. University of Wolverhampton, Arts University Bournemouth).
+    content: `The college delivers undergraduate programmes in person on behalf of partner universities (e.g. University of Wolverhampton, Arts University Bournemouth).
 
 As a Personal Academic Tutor (PAT) you are the first point of contact for the students in your groups. Most of our students are mature learners and many are first-time undergraduates, so they will rely on you for guidance in person, by phone, text, email and WhatsApp.
 

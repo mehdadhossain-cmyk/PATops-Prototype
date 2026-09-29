@@ -135,7 +135,7 @@ export interface ClassSession {
   slots: Slot[]
 }
 
-/** A teaching group. Group membership is decided by other UKMC departments and imported here. */
+/** A teaching group. Group membership is decided by other departments and imported here. */
 export interface Group {
   id: string
   code: string
@@ -169,7 +169,7 @@ export interface Student {
   phone: string
   emergencyContactName: string
   emergencyContactPhone: string
-  /** UKMC EBS person code. */
+  /** EBS person code. */
   ebsPersonCode: string
   /** Partner university student ID. */
   uniStudentId: string

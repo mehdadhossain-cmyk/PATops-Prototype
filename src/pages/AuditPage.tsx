@@ -123,10 +123,10 @@ function ReportView({ pack }: { pack: ReturnType<typeof buildAuditPack> }) {
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm print:border-0 print:p-0 print:shadow-none">
       <header className="mb-5 border-b-4 border-brand-700 pb-3">
-        <div className="text-xs font-semibold tracking-widest text-brand-700 uppercase">UKMC PAT team · PATops audit pack</div>
+        <div className="text-xs font-semibold tracking-widest text-brand-700 uppercase">PAT team · PATops audit pack</div>
         <h1 className="text-2xl font-semibold">{pack.person.name}</h1>
         <div className="text-sm text-slate-500">{rangeLabel(pack.range)} · generated {fmtStamp(pack.generatedAt)} by {userName(db, pack.generatedBy)}</div>
-        <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs text-orange-800">Contains personal data about staff and students. Handle and store under the UKMC data protection policy.</div>
+        <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs text-orange-800">Contains personal data about staff and students. Handle and store under your organisation's data protection policy.</div>
       </header>
       <dl className="mb-4 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
         {pack.facts.map(([k, v]) => (

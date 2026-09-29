@@ -31,7 +31,7 @@ export function LoginPage() {
         <div className="mb-8 text-center text-white">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 text-2xl font-bold">P</div>
           <h1 className="text-3xl font-semibold">PATops</h1>
-          <p className="mt-1 text-brand-100">All-in-one workspace for the UKMC PAT team · prototype</p>
+          <p className="mt-1 text-brand-100">All-in-one workspace for the PAT team · prototype</p>
         </div>
 
         <div className="rounded-2xl bg-white p-6 shadow-xl">

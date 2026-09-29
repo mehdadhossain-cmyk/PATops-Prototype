@@ -1,6 +1,6 @@
-# PATops: UKMC PAT team prototype
+# PATops: PAT team prototype
 
-A clickable prototype of an all-in-one workspace for the UKMC Personal Academic Tutor (PAT) team.
+A clickable prototype of an all-in-one workspace for a Personal Academic Tutor (PAT) team.
 It is built to test each feature idea with real users before committing to a full SaaS build.
 
 > **Prototype only.** All data is fake and is stored in your browser's `localStorage`. No MS365 dependency.

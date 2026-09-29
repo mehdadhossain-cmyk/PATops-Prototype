@@ -161,7 +161,7 @@ function NewStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
           <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus />
         </Field>
         <Field label="Work email" error={touched ? errors.email : undefined}>
-          <Input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="name@ukmc.ac.uk" />
+          <Input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="name@example.ac.uk" />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Role">

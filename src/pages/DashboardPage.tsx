@@ -42,7 +42,7 @@ function PatDashboard({ me }: { me: User }) {
 
   return (
     <div>
-      <PageHeader title={`Hello, ${first}`} subtitle={me.status === 'active' ? 'Here is what needs your attention today.' : 'Welcome to the UKMC PAT team! Here is your onboarding journey.'} />
+      <PageHeader title={`Hello, ${first}`} subtitle={me.status === 'active' ? 'Here is what needs your attention today.' : 'Welcome to the PAT team! Here is your onboarding journey.'} />
 
       {me.status !== 'active' && (
         <Card title="Your onboarding journey" className="mb-6">

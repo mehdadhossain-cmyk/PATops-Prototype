@@ -64,7 +64,7 @@ export function Layout() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 font-bold text-white">P</span>
           <div>
             <div className="font-semibold leading-tight">PATops</div>
-            <div className="text-xs text-slate-500">UKMC PAT team</div>
+            <div className="text-xs text-slate-500">PAT team</div>
           </div>
         </div>
         <nav className="space-y-0.5 p-3">
