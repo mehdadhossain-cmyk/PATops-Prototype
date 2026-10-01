@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { fmtDate, fmtDateTime, userName } from '../data/logic'
+import { channelsLabel, fmtDate, fmtDateTime, userName } from '../data/logic'
 import { attendanceSummary, canDecideRetention, retentionStage, RISK_THRESHOLD } from '../data/risk'
-import { CHANNEL_LABEL, OUTCOME_LABEL, REASON_LABEL, ROLE_LABEL, STAGE_LABEL, type RetentionStage } from '../data/types'
+import { OUTCOME_LABEL, REASON_LABEL, ROLE_LABEL, STAGE_LABEL, type RetentionStage } from '../data/types'
 import { useDb } from '../store/db'
 import { AttendanceChart } from './AttendanceChart'
 import { CHANNEL_ICON } from './Comms'
@@ -44,7 +44,7 @@ export function RetentionPanel({ studentId }: { studentId: string }) {
   const intake = db.intakes.find((i) => i.id === g?.intakeId)
   const att = attendanceSummary(db, studentId)
   const current = retentionStage(db, studentId)
-  const decider = me ? canDecideRetention(me.role) : false
+  const decider = me ? canDecideRetention(me) : false
   const hasNotes = db.riskNotes.some((n) => n.studentId === studentId)
 
   // One timeline: retention notes plus direct contacts about attendance or wellbeing.
@@ -92,7 +92,7 @@ export function RetentionPanel({ studentId }: { studentId: string }) {
                   <li key={it.c.id} className="relative">
                     <span className="absolute top-1 -left-[26px] h-3 w-3 rounded-full border-2 border-white bg-slate-300" />
                     <div className="text-xs text-slate-500">
-                      {fmtDateTime(it.c.at)} · {CHANNEL_ICON[it.c.channel]} {CHANNEL_LABEL[it.c.channel]} · {REASON_LABEL[it.c.reason]}
+                      {fmtDateTime(it.c.at)} · {it.c.channels.map((x) => CHANNEL_ICON[x]).join('')} {channelsLabel(it.c)} · {REASON_LABEL[it.c.reason]}
                       {it.c.outcome !== 'reached' && ` · ${OUTCOME_LABEL[it.c.outcome]}`} · {userName(db, it.c.authorId)} (call log)
                     </div>
                     <p className="mt-0.5 text-sm text-slate-600">{it.c.summary}</p>

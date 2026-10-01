@@ -1,14 +1,15 @@
 // One task list built from every module. Tasks are derived from the underlying records,
 // so doing the real work (logging a meeting, recording a follow-up…) clears the task.
-import type { DbState, User } from './types'
-import { activeModules, CONTACT_GAP_DAYS, fmtDate, isProfileComplete, lastReachedByStudent, moduleDueDate, needsTraining, openFollowUps, patGroups, progressFor, studentName, visibleGroups, visibleStaff, trainingSummary } from './logic'
+import type { AssignedTask, DbState, User } from './types'
+import { activeModules, can, CONTACT_GAP_DAYS, fmtDate, isProfileComplete, isTop, lastReachedByStudent, moduleDueDate, needsTraining, openFollowUps, patGroups, progressFor, studentName, trainingSummary, visibleGroups, visibleStaff } from './logic'
 import { caseActions, visibleCases } from './wellbeing'
 import { NO_ACTION_DAYS, latestWeekEnding, riskRows } from './risk'
 import { openPeriods, visibleNonSubmissions } from './submissions'
 import { lsaStatus, visibleLsas } from './lsa'
 import { canDecide, weekdayOf } from './leave'
+import { needsManager, probationRows } from './probation'
 
-export type TaskSource = 'training' | 'profile' | 'call_log' | 'wellbeing' | 'at_risk' | 'non_submission' | 'lsa' | 'leave' | 'assigned' | 'team'
+export type TaskSource = 'training' | 'profile' | 'call_log' | 'wellbeing' | 'at_risk' | 'non_submission' | 'lsa' | 'leave' | 'assigned' | 'probation' | 'team'
 
 export const SOURCE_LABEL: Record<TaskSource, string> = {
   training: 'Training',
@@ -20,6 +21,7 @@ export const SOURCE_LABEL: Record<TaskSource, string> = {
   lsa: 'LSA',
   leave: 'Leave & cover',
   assigned: 'Assigned',
+  probation: 'Probation',
   team: 'Team',
 }
 
@@ -129,18 +131,27 @@ function teamTasks(db: DbState, me: User, now: Date): Task[] {
   const today = iso(now)
   const out: Task[] = []
   const staff = visibleStaff(db, me)
-  if (me.role === 'admin' || me.role === 'manager') {
+  if (can(me, 'attendance')) {
     const latest = latestWeekEnding(db)
     const friday = new Date(now)
     friday.setDate(friday.getDate() - ((friday.getDay() + 2) % 7))
     if (!latest || latest < iso(friday)) out.push({ id: 'att-upload', source: 'team', title: `Upload attendance for the week ending ${fmtDate(iso(friday))}`, detail: 'At-risk flags use the latest upload', due: addDays(iso(friday), 3), link: '/attendance' })
   }
   const ready = staff.filter((u) => u.status === 'onboarding' && trainingSummary(db, u).complete)
-  if (ready.length && me.role !== 'lead') out.push({ id: 'ready', source: 'team', title: `${ready.length} new joiner${ready.length === 1 ? '' : 's'} finished training: mark active and allocate`, detail: ready.map((u) => u.name).join(', '), due: today, link: '/staff' })
+  if (ready.length && can(me, 'staff')) out.push({ id: 'ready', source: 'team', title: `${ready.length} new joiner${ready.length === 1 ? '' : 's'} finished training: mark active and allocate`, detail: ready.map((u) => u.name).join(', '), due: today, link: '/staff' })
   const overdueTraining = staff.filter((u) => needsTraining(u) && u.status !== 'inactive' && trainingSummary(db, u, now).overdue.length > 0)
   if (overdueTraining.length) out.push({ id: 'tr-overdue', source: 'team', title: `${overdueTraining.length} staff with overdue training`, detail: overdueTraining.map((u) => u.name).join(', '), due: null, link: '/training-tracker' })
   const noPat = visibleGroups(db, me).filter((g) => !g.patId && db.intakes.find((i) => i.id === g.intakeId)?.status !== 'closed')
-  if (noPat.length && me.role !== 'lead') out.push({ id: 'nopat', source: 'team', title: `${noPat.length} group${noPat.length === 1 ? '' : 's'} without a PAT`, detail: '', due: null, link: '/groups?pat=none' })
+  if (noPat.length && can(me, 'allocation')) out.push({ id: 'nopat', source: 'team', title: `${noPat.length} group${noPat.length === 1 ? '' : 's'} without a PAT`, detail: '', due: null, link: '/groups?pat=none' })
+  if (isTop(me.role)) {
+    for (const r of probationRows(db, today).filter(needsManager)) {
+      if (r.status === 'awaiting_hr') {
+        out.push({ id: `pb-hr-${r.user.id}`, source: 'probation', title: `Confirm ${r.user.name}'s probation outcome to the HR manager`, detail: r.probation.outcome === 'confirmed' ? 'Passed and confirmed' : 'Not passed', due: addDays((r.probation.decidedAt ?? today).slice(0, 10), 2), link: `/probation?open=${r.user.id}` })
+      } else {
+        out.push({ id: `pb-${r.user.id}`, source: 'probation', title: `Confirm probation: ${r.user.name}`, detail: `${r.daysLeft < 0 ? `Ended ${-r.daysLeft} days ago` : r.daysLeft === 0 ? 'Ends today' : `Ends in ${r.daysLeft} days`} · started ${fmtDate(r.user.startDate)}`, due: r.end, link: `/probation?open=${r.user.id}` })
+      }
+    }
+  }
   for (const t of db.assignedTasks.filter((x) => x.createdBy === me.id && !x.personal)) {
     const open = t.assigneeIds.length - t.completions.length
     if (open > 0 && t.dueDate && t.dueDate < today) out.push({ id: `track-${t.id}`, source: 'team', title: `"${t.title}": ${open} of ${t.assigneeIds.length} not done`, detail: 'Past its due date', due: t.dueDate, link: '/tasks?tab=assigned' })
@@ -151,3 +162,12 @@ function teamTasks(db: DbState, me: User, now: Date): Task[] {
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999') || a.title.localeCompare(b.title))
 }
+
+/** Who may edit or delete an assigned task or reminder: whoever created it, and the PAT Manager / Master Owner for assigned tasks. */
+export function canEditTask(me: User, t: AssignedTask): boolean {
+  if (t.personal) return t.createdBy === me.id
+  return t.createdBy === me.id || isTop(me.role)
+}
+
+/** Who can assign tasks to others. */
+export const canAssignTasks = (me: User) => me.role === 'lead' || can(me, 'tasks')

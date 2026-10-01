@@ -1,6 +1,8 @@
 import type {
+  AppSettings,
   Campus,
   DbState,
+  Permission,
   QuizQuestion,
   Role,
   Shift,
@@ -18,8 +20,9 @@ import { buildLsaSeed } from './seedLsa'
 import { buildLeaveSeed } from './seedLeave'
 import { buildTasksSeed } from './seedTasks'
 import { buildAllocationSeed } from './seedAllocation'
+import { buildProbationSeed } from './probation'
 
-export const DB_VERSION = 10
+export const DB_VERSION = 11
 
 const day = 24 * 60 * 60 * 1000
 const daysAgo = (n: number) => new Date(Date.now() - n * day).toISOString()
@@ -74,6 +77,8 @@ function makeUser(
     campusId,
     status: opts.status ?? 'active',
     startDate: dateOnly(started),
+    level: role === 'pat' ? (opts.level ?? defaultLevel(opts.status ?? 'active', opts.startDaysAgo)) : null,
+    permissions: opts.permissions ?? [],
     phone: complete ? `07${String(100000000 + nameCursor * 7919).slice(0, 9)}` : '',
     shift: opts.shift ?? (complete ? 'morning' : null),
     workDays: opts.workDays ?? (complete ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] : []),
@@ -83,15 +88,31 @@ function makeUser(
     bio: '',
     profileCompletedAt: complete ? started : null,
     createdAt: daysAgo(opts.startDaysAgo + 7),
-    createdBy: role === 'manager' ? null : 'u-admin-1',
+    createdBy: role === 'manager' || role === 'owner' ? null : 'u-admin-1',
   }
 }
 
+/** New joiners are trainees; PATs with more than ~10 months in the role are senior. */
+const defaultLevel = (status: User['status'], startDaysAgo: number) => (status !== 'active' ? 'trainee' : startDaysAgo > 300 ? 'senior' : 'junior')
+
+/** Demo admins have different access, granted by the PAT Manager. Only the first can allocate PATs. */
+export const seedAdminPermissions: Permission[][] = [
+  ['allocation', 'schedules', 'staff', 'training', 'academic', 'attendance', 'submissions', 'lsa', 'tasks', 'audit', 'settings'],
+  ['academic', 'attendance', 'submissions', 'lsa', 'tasks', 'audit'],
+  ['attendance', 'submissions', 'lsa', 'tasks'],
+  ['schedules', 'staff', 'training', 'tasks'],
+]
+
+export const seedSettings: AppSettings = { hrManagerName: 'Rebecca Lewis', hrManagerEmail: 'hr.manager@example.ac.uk' }
+
+export const seedOwner = () => makeUser('u-owner', 'owner', null, { startDaysAgo: 1500, name: 'Jordan Hayes' })
+
 function buildUsers(): User[] {
   const users: User[] = []
+  users.push(seedOwner())
   users.push(makeUser('u-manager', 'manager', null, { startDaysAgo: 900, name: 'Sarah Mitchell' }))
   for (let i = 1; i <= 4; i++) {
-    users.push(makeUser(`u-admin-${i}`, 'admin', null, { startDaysAgo: 600 - i * 40 }))
+    users.push(makeUser(`u-admin-${i}`, 'admin', null, { startDaysAgo: 600 - i * 40, permissions: seedAdminPermissions[i - 1] }))
   }
   seedCampuses.forEach((c, ci) => {
     users.push(makeUser(`u-lead-${ci + 1}`, 'lead', c.id, { startDaysAgo: 500 - ci * 20 }))
@@ -322,9 +343,38 @@ export function buildSeed(): DbState {
     ...buildTasksSeed(users),
     allocationProfiles: allocation.allocationProfiles,
     allocationDrafts: allocation.allocationDrafts,
+    probations: buildProbationSeed(users, 'u-manager'),
+    staffNotes: [],
+    settings: seedSettings,
     users,
     trainingModules: seedModules,
     trainingProgress: buildProgress(users),
     audit: [],
+  }
+}
+
+/**
+ * v10 -> v11: owner account, admin permissions, PAT levels, probation, private notes,
+ * HR contact, and call-log entries with several channels.
+ */
+export function migrateToV11(d: DbState): DbState {
+  type OldUser = User & { level?: User['level']; permissions?: Permission[] }
+  type OldComm = DbState['comms'][number] & { channel?: DbState['comms'][number]['channels'][number] }
+  const today = Date.now()
+  const users: User[] = (d.users as OldUser[]).map((u) => ({
+    ...u,
+    level: u.level !== undefined ? u.level : u.role === 'pat' ? defaultLevel(u.status, Math.floor((today - new Date(u.startDate).getTime()) / day)) : null,
+    permissions: u.permissions ?? (u.role === 'admin' ? (seedAdminPermissions[Number(u.id.replace('u-admin-', '')) - 1] ?? seedAdminPermissions[1]) : []),
+  }))
+  if (!users.some((u) => u.role === 'owner')) users.unshift(seedOwner())
+  const manager = users.find((u) => u.role === 'manager')?.id ?? 'u-owner'
+  return {
+    ...d,
+    version: 11,
+    users,
+    comms: (d.comms as OldComm[]).map(({ channel, ...c }) => ({ ...c, channels: c.channels ?? (channel ? [channel] : ['phone']) })),
+    probations: d.probations ?? buildProbationSeed(users, manager),
+    staffNotes: d.staffNotes ?? [],
+    settings: d.settings ?? seedSettings,
   }
 }

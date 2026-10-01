@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { RoleBadge, StaffStatusBadge } from '../components/StatusBadges'
+import { LevelBadge, RoleBadge, StaffStatusBadge } from '../components/StatusBadges'
 import { Avatar, Button, Card, Empty, Field, Input, Modal, PageHeader, Progress, Select } from '../components/ui'
-import { campusName, canManageStaff, needsTraining, trainingSummary, visibleStaff } from '../data/logic'
-import { ROLE_LABEL, type Role, type StaffStatus } from '../data/types'
+import { campusName, creatableRoles, needsTraining, trainingSummary, visibleStaff } from '../data/logic'
+import { PAT_LEVEL_LABEL, PAT_LEVELS, ROLE_LABEL, type Role, type StaffStatus } from '../data/types'
 import { useDb } from '../store/db'
+import { WeekDays } from '../components/WorkPattern'
 
 export function StaffPage() {
   const { db, me } = useDb()
@@ -12,6 +13,7 @@ export function StaffPage() {
   const [campus, setCampus] = useState('')
   const [role, setRole] = useState('')
   const [status, setStatus] = useState('')
+  const [level, setLevel] = useState('')
   const [creating, setCreating] = useState(false)
 
   const rows = useMemo(() => {
@@ -22,11 +24,12 @@ export function StaffPage() {
       .filter((u) => !campus || u.campusId === campus)
       .filter((u) => !role || u.role === role)
       .filter((u) => !status || u.status === status)
+      .filter((u) => !level || u.level === level)
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [db, me, q, campus, role, status])
+  }, [db, me, q, campus, role, status, level])
 
   if (!me) return null
-  const manage = canManageStaff(me.role)
+  const manage = creatableRoles(me).length > 0
 
   return (
     <div>
@@ -37,7 +40,7 @@ export function StaffPage() {
       />
 
       <Card>
-        <div className="mb-4 grid gap-3 sm:grid-cols-4">
+        <div className="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Input placeholder="Search name or email…" value={q} onChange={(e) => setQ(e.target.value)} />
           {me.role !== 'lead' && (
             <Select value={campus} onChange={(e) => setCampus(e.target.value)}>
@@ -52,6 +55,10 @@ export function StaffPage() {
           <Select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All statuses</option>
             {(['invited', 'onboarding', 'active', 'inactive'] as StaffStatus[]).map((s) => <option key={s} value={s} className="capitalize">{s}</option>)}
+          </Select>
+          <Select value={level} onChange={(e) => setLevel(e.target.value)} aria-label="PAT level">
+            <option value="">All PAT levels</option>
+            {PAT_LEVELS.map((l) => <option key={l} value={l}>{PAT_LEVEL_LABEL[l]} PATs</option>)}
           </Select>
         </div>
 
@@ -84,11 +91,11 @@ export function StaffPage() {
                           </span>
                         </Link>
                       </td>
-                      <td className="py-2.5 pr-4"><RoleBadge role={u.role} /></td>
+                      <td className="py-2.5 pr-4"><span className="inline-flex flex-wrap gap-1"><RoleBadge role={u.role} /><LevelBadge level={u.level} /></span></td>
                       <td className="py-2.5 pr-4">{campusName(db, u.campusId)}</td>
                       <td className="py-2.5 pr-4 text-slate-600">
                         {u.shift ? <span className="capitalize">{u.shift}</span> : '—'}
-                        <div className="text-xs text-slate-400">{u.workDays.join(', ')}</div>
+                        {u.workDays.length > 0 && <div className="mt-0.5"><WeekDays workDays={u.workDays} /></div>}
                       </td>
                       <td className="py-2.5 pr-4"><StaffStatusBadge status={u.status} /></td>
                       <td className="py-2.5 pr-4">
@@ -119,8 +126,9 @@ export function StaffPage() {
 }
 
 function NewStaffModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { db, createStaff } = useDb()
+  const { db, me, createStaff } = useDb()
   const navigate = useNavigate()
+  const roles = me ? creatableRoles(me) : []
   const empty = { name: '', email: '', role: 'pat' as Role, campusId: db.campuses[0]?.id ?? '', startDate: new Date().toISOString().slice(0, 10) }
   const [f, setF] = useState(empty)
   const [touched, setTouched] = useState(false)
@@ -155,7 +163,7 @@ function NewStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
         }}
       >
         <p className="text-sm text-slate-500">
-          The new joiner receives an invite (simulated), sets up their profile on first sign-in, and their training package is assigned automatically.
+          The new joiner receives an invite (simulated), sets up their profile on first sign-in, and their training package is assigned automatically. New PATs start as Trainee; set their working pattern on their staff page.
         </p>
         <Field label="Full name" error={touched ? errors.name : undefined}>
           <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus />
@@ -166,10 +174,10 @@ function NewStaffModal({ open, onClose }: { open: boolean; onClose: () => void }
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Role">
             <Select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as Role })}>
-              {(Object.keys(ROLE_LABEL) as Role[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              {roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </Select>
           </Field>
-          <Field label="Start date" error={touched ? errors.startDate : undefined} hint="Training due dates count from this">
+          <Field label="Start date" error={touched ? errors.startDate : undefined} hint={f.role === 'pat' ? 'Training due dates and the 4-month probation count from this' : 'Training due dates count from this'}>
             <Input type="date" value={f.startDate} onChange={(e) => setF({ ...f, startDate: e.target.value })} />
           </Field>
         </div>

@@ -5,7 +5,7 @@ import { Badge, Button, Card, Empty, Field, Input, Modal, PageHeader, Stat, Tabs
 import { buildContext, currentProblems } from '../data/allocation'
 import { findHeader, previewAllocationImport, type AllocationImportPreview } from '../data/allocationImport'
 import { exampleAllocationWorkbook } from '../data/allocationSheets'
-import { canManageStudents, fmtDate, intakeLabel, userName } from '../data/logic'
+import { can, fmtDate, intakeLabel, userName } from '../data/logic'
 import { saveFile } from '../lib/download'
 import { buildXlsx } from '../lib/xlsx'
 import { readXlsx, type ReadSheet } from '../lib/xlsxRead'
@@ -35,7 +35,7 @@ export function AllocationPage() {
   const [tab, setTab] = useState<Tab>('drafts')
   const [creating, setCreating] = useState(false)
   if (!me) return null
-  const admin = canManageStudents(me.role)
+  const admin = can(me, 'allocation')
   const ctx = buildContext(db, null)
   const live = currentProblems(ctx, db.groups.map((g) => g.id))
   const noPat = db.groups.filter((g) => !g.patId && db.intakes.find((i) => i.id === g.intakeId)?.status !== 'closed')
@@ -84,7 +84,7 @@ function Drafts() {
               <span className={cx('text-sm', unalloc ? 'text-amber-700' : 'text-emerald-700')}>{unalloc} unallocated</span>
               <span className={cx('text-sm', problems ? 'text-rose-600' : 'text-slate-500')}>{problems} breaking a rule</span>
               <Link to={`/allocation/${d.id}`}><Button variant="secondary">Open board</Button></Link>
-              {me && canManageStudents(me.role) && d.status === 'draft' && (
+              {me && can(me, 'allocation') && d.status === 'draft' && (
                 confirm === d.id ? (
                   <span className="flex gap-2"><Button variant="danger" onClick={() => deleteDraft(d.id)}>Delete</Button><Button variant="secondary" onClick={() => setConfirm(null)}>Keep</Button></span>
                 ) : <Button variant="ghost" onClick={() => setConfirm(d.id)}>Delete</Button>

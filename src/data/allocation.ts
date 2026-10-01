@@ -419,3 +419,19 @@ export function currentProblems(ctx: AllocContext, groupIds: string[]): Map<stri
   }
   return out
 }
+
+const SLOT_START: Record<Slot, string> = { Mor: '09:00', Afr: '13:00', Eve: '17:00' }
+const SLOT_END: Record<Slot, string> = { Mor: '13:00', Afr: '17:00', Eve: '21:00' }
+
+/** Turns the day × session grid into the fields the rest of the app reads (days, times, shift). */
+export function scheduleFields(sessions: ClassSession[]): Pick<Group, 'sessions' | 'classDays' | 'startTime' | 'endTime' | 'shift'> {
+  const sorted = WEEKDAYS.map((d) => sessions.find((s) => s.day === d)).filter((s): s is ClassSession => !!s && s.slots.length > 0)
+  const slots = SLOTS.filter((x) => sorted.some((s) => s.slots.includes(x)))
+  return {
+    sessions: sorted.map((s) => ({ day: s.day, slots: SLOTS.filter((x) => s.slots.includes(x)) })),
+    classDays: sorted.map((s) => s.day),
+    startTime: SLOT_START[slots[0] ?? 'Mor'],
+    endTime: SLOT_END[slots.at(-1) ?? 'Mor'],
+    shift: slots.includes('Eve') ? 'evening' : 'morning',
+  }
+}

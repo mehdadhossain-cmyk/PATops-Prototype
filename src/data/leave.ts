@@ -1,5 +1,6 @@
 // Leave and cover rules.
 import type { CoverSlot, DbState, Group, LeaveRequest, LeaveStatus, User, Weekday } from './types'
+import { isTop } from './logic'
 
 const DAY_NAMES: Weekday[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as Weekday[]
 export const weekdayOf = (iso: string): Weekday => DAY_NAMES[new Date(`${iso}T12:00:00Z`).getUTCDay()]
@@ -115,7 +116,7 @@ export function statusAfterCover(db: DbState, requester: User): LeaveStatus {
 export function canDecide(db: DbState, viewer: User, r: LeaveRequest): boolean {
   const requester = db.users.find((u) => u.id === r.requesterId)
   if (r.status === 'awaiting_lead') return viewer.role === 'lead' && viewer.campusId === requester?.campusId && viewer.id !== r.requesterId
-  if (r.status === 'awaiting_manager') return viewer.role === 'manager' && viewer.id !== r.requesterId
+  if (r.status === 'awaiting_manager') return isTop(viewer.role) && viewer.id !== r.requesterId
   return false
 }
 

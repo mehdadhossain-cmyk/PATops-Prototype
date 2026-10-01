@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StudentStatusBadge } from '../components/StatusBadges'
 import { Button, Card, Empty, Input, PageHeader, Select } from '../components/ui'
-import { campusName, studentName, userName, visibleGroups, visibleStudents } from '../data/logic'
+import { campusName, can, seesAllCampuses, studentName, userName, visibleGroups, visibleStudents } from '../data/logic'
 import type { StudentStatus } from '../data/types'
 import { WellbeingBadge } from '../components/Wellbeing'
 import { activePlanStudentIds } from '../data/wellbeing'
@@ -44,7 +44,7 @@ export function StudentsPage() {
       <PageHeader
         title={me.role === 'pat' ? 'My students' : 'Students'}
         subtitle="Search by name, EBS person code, uni student ID, email or phone."
-        actions={(me.role === 'admin' || me.role === 'manager') && <Link to="/import"><Button variant="secondary">Import data</Button></Link>}
+        actions={can(me, 'academic') && <Link to="/import"><Button variant="secondary">Import data</Button></Link>}
       />
       <Card>
         <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -53,7 +53,7 @@ export function StudentsPage() {
             <option value="">All groups</option>
             {groups.map((g) => <option key={g.id} value={g.id}>{g.code}</option>)}
           </Select>
-          {(me.role === 'admin' || me.role === 'manager') && (
+          {seesAllCampuses(me.role) && (
             <Select id="students-campus" value={campus} onChange={(e) => { setCampus(e.target.value); setLimit(PAGE) }}>
               <option value="">All campuses</option>
               {db.campuses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

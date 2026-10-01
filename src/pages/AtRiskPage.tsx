@@ -4,7 +4,7 @@ import { Sparkline } from '../components/AttendanceChart'
 import { AttendanceValue, StageBadge } from '../components/Risk'
 import { WellbeingBadge } from '../components/Wellbeing'
 import { Button, Card, Empty, Input, PageHeader, Select, Stat, Tabs, cx } from '../components/ui'
-import { campusName, daysSince, fmtDate, intakeLabel, studentName, userName, visibleStudents } from '../data/logic'
+import { campusName, can, daysSince, fmtDate, intakeLabel, seesAllCampuses, studentName, userName, visibleStudents } from '../data/logic'
 import { latestWeekEnding, NO_ACTION_DAYS, RISK_THRESHOLD, riskRows, type RiskRow } from '../data/risk'
 import { STAGE_LABEL, type RetentionStage } from '../data/types'
 import { activePlanStudentIds } from '../data/wellbeing'
@@ -59,7 +59,7 @@ export function AtRiskPage() {
         subtitle={`Students whose overall attendance is below ${RISK_THRESHOLD}%${week ? `, from the week ending ${fmtDate(week)}` : ''}. PATs and admins share one retention history per student.`}
         actions={
           <>
-            {(me.role === 'admin' || me.role === 'manager') && <Link to="/attendance"><Button variant="secondary">Upload attendance</Button></Link>}
+            {can(me, 'attendance') && <Link to="/attendance"><Button variant="secondary">Upload attendance</Button></Link>}
             <Button variant="secondary" onClick={exportCsv}>Export CSV</Button>
           </>
         }
@@ -80,7 +80,7 @@ export function AtRiskPage() {
         </div>
         <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Input id="risk-q" placeholder="Search name or EBS code…" value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE) }} />
-          {(me.role === 'admin' || me.role === 'manager') && (
+          {seesAllCampuses(me.role) && (
             <Select id="risk-campus" value={campus} onChange={(e) => setCampus(e.target.value)}>
               <option value="">All campuses</option>
               {db.campuses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

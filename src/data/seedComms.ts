@@ -79,7 +79,8 @@ export function buildCommsSeed(users: User[], groups: Group[], students: Student
           kind: 'individual',
           studentId: s.id,
           groupIds: [],
-          channel,
+          // Some contacts used two channels, e.g. a call followed by a WhatsApp message.
+          channels: n % 7 === 0 && channel !== 'in_person' ? [channel, channel === 'whatsapp' ? 'email' : 'whatsapp'] : [channel],
           direction: rand() < 0.75 ? 'outbound' : 'inbound',
           outcome,
           reason,
@@ -105,7 +106,7 @@ export function buildCommsSeed(users: User[], groups: Group[], students: Student
           kind: 'announcement',
           studentId: null,
           groupIds: [g.id],
-          channel: rand() < 0.5 ? 'whatsapp' : 'email',
+          channels: rand() < 0.5 ? (n % 3 === 0 ? ['whatsapp', 'email'] : ['whatsapp']) : ['email'],
           direction: 'outbound',
           outcome: 'reached',
           reason: 'admin',

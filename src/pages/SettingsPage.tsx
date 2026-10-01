@@ -1,15 +1,30 @@
 import { useState } from 'react'
-import { Button, Card, ConfirmButton, Input, PageHeader } from '../components/ui'
+import { AccessMatrix } from '../components/Access'
+import { Button, Card, ConfirmButton, Field, Input, PageHeader } from '../components/ui'
+import { can, isTop } from '../data/logic'
 import { useDb } from '../store/db'
 
 export function SettingsPage() {
-  const { db, addCampus, resetDemo } = useDb()
+  const { db, me, addCampus, resetDemo } = useDb()
   const [name, setName] = useState('')
   const count = (id: string) => db.users.filter((u) => u.campusId === id).length
+  if (!me) return null
+  const top = isTop(me.role)
 
   return (
-    <div className="max-w-2xl space-y-5">
+    <div className="max-w-4xl space-y-5">
       <PageHeader title="Settings" />
+      {top && (
+        <Card title="Admin access">
+          <p className="mb-3 text-sm text-slate-600">
+            Choose what each PAT Admin can do. The PAT Manager and Master Owner always have full access. Hover a column for details, or change one admin's access from their staff page.
+          </p>
+          <AccessMatrix />
+        </Card>
+      )}
+      {top && <HrContact />}
+      {can(me, 'settings') && (
+      <>
       <Card title="Campuses">
         <ul className="mb-4 divide-y divide-slate-100 text-sm">
           {db.campuses.map((c) => (
@@ -48,11 +63,42 @@ export function SettingsPage() {
           ))}
         </div>
       </Card>
+      </>
+      )}
       <Card title="Demo data">
         <p className="mb-3 text-sm text-slate-600">All data in this prototype lives in your browser's local storage. Reset it to start the walkthrough again.</p>
         <ConfirmButton label="Reset demo data" confirmLabel="Reset all demo data?" onConfirm={resetDemo} />
       </Card>
     </div>
+  )
+}
+
+/** Who probation outcomes are confirmed to. */
+function HrContact() {
+  const { db, saveSettings } = useDb()
+  const [name, setName] = useState(db.settings.hrManagerName)
+  const [email, setEmail] = useState(db.settings.hrManagerEmail)
+  const [saved, setSaved] = useState(false)
+  const bad = !!email.trim() && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())
+  return (
+    <Card title="HR manager">
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (bad) return
+          saveSettings({ hrManagerName: name.trim(), hrManagerEmail: email.trim() })
+          setSaved(true)
+        }}
+      >
+        <p className="text-sm text-slate-600">Probation outcomes are confirmed to this person.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Name"><Input id="hr-name" value={name} onChange={(e) => { setName(e.target.value); setSaved(false) }} /></Field>
+          <Field label="Email" error={bad ? 'Enter a valid email' : undefined}><Input id="hr-email" value={email} onChange={(e) => { setEmail(e.target.value); setSaved(false) }} /></Field>
+        </div>
+        <div className="flex items-center gap-3"><Button type="submit">Save</Button>{saved && <span className="text-sm text-emerald-600">Saved ✓</span>}</div>
+      </form>
+    </Card>
   )
 }
 

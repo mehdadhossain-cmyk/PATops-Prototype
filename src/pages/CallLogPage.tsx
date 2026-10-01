@@ -4,6 +4,7 @@ import { CommEntry, LogContactModal, Toast } from '../components/Comms'
 import { Badge, Button, Card, Empty, Input, PageHeader, Progress, Select, Stat, Tabs, cx } from '../components/ui'
 import {
   campusName,
+  channelsLabel,
   CONTACT_GAP_DAYS,
   daysSince,
   fmtDate,
@@ -136,7 +137,7 @@ function LogList({ pat }: { pat: User }) {
     const qy = q.trim().toLowerCase()
     return db.comms
       .filter((c) => c.authorId === pat.id && c.at >= since)
-      .filter((c) => !channel || c.channel === channel)
+      .filter((c) => !channel || c.channels.includes(channel))
       .filter((c) => !reason || c.reason === reason)
       .filter((c) => !kind || c.kind === kind)
       .filter((c) => {
@@ -155,7 +156,7 @@ function LogList({ pat }: { pat: User }) {
         return [
           fmtDateTime(c.at), c.kind, s ? studentName(s) : '', s?.ebsPersonCode ?? '',
           c.groupIds.map((g) => db.groups.find((x) => x.id === g)?.code).join(' '),
-          CHANNEL_LABEL[c.channel], c.direction, OUTCOME_LABEL[c.outcome], REASON_LABEL[c.reason], c.summary,
+          channelsLabel(c), c.direction, OUTCOME_LABEL[c.outcome], REASON_LABEL[c.reason], c.summary,
           c.followUpDate ?? '', c.followUpDoneAt ? fmtDate(c.followUpDoneAt) : '', fmtDateTime(c.loggedAt), c.voidedAt ? `Yes: ${c.voidReason}` : '',
         ]
       }),

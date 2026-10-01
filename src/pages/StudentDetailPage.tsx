@@ -7,7 +7,7 @@ import { StudentLsas } from '../components/Lsa'
 import { Link, useParams } from 'react-router-dom'
 import { StudentStatusBadge } from '../components/StatusBadges'
 import { Button, Card, CopyButton, Empty, Field, Input, PageHeader, Select, Tabs } from '../components/ui'
-import { campusName, canManageStudents, courseName, daysSince, fmtDate, fmtSchedule, intakeLabel, lastReachedByStudent, studentName, studentTimeline, userName, visibleStudents } from '../data/logic'
+import { campusName, can, courseName, daysSince, fmtDate, fmtSchedule, intakeLabel, lastReachedByStudent, studentName, studentTimeline, userName, visibleStudents } from '../data/logic'
 import type { Student, StudentStatus } from '../data/types'
 import { useDb } from '../store/db'
 
@@ -19,7 +19,7 @@ export function StudentDetailPage() {
   const s = visibleStudents(db, me).find((x) => x.id === id)
   if (!s) return <p>Student not found or not visible to you.</p>
   const g = db.groups.find((x) => x.id === s.groupId)
-  const manage = canManageStudents(me.role)
+  const manage = can(me, 'academic')
   const onPlan = db.wellbeingCases.some((c) => c.studentId === s.id && c.status === 'approved')
 
   return (

@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Toast } from '../components/Comms'
 import { fmtRange, LeaveDetailModal, LeaveStatusBadge, NewLeaveModal } from '../components/Leave'
 import { Badge, Button, Card, Empty, Input, PageHeader, Select, Stat, Tabs, cx } from '../components/ui'
-import { campusName, fmtDate, userName, visibleStaff } from '../data/logic'
+import { campusName, fmtDate, isTop, seesAllCampuses, userName, visibleStaff } from '../data/logic'
 import { canDecide, datesBetween, leaveDaysTaken, weekdayOf, workingDays } from '../data/leave'
 import { LEAVE_TYPE_LABEL, type LeaveRequest } from '../data/types'
 import { useDb } from '../store/db'
@@ -11,8 +11,9 @@ type Tab = 'mine' | 'cover' | 'approvals' | 'calendar'
 
 export function LeavePage() {
   const { db, me } = useDb()
-  const approver = me?.role === 'lead' || me?.role === 'manager'
-  const [tab, setTab] = useState<Tab>(approver && me?.role === 'manager' ? 'approvals' : 'mine')
+  const top = !!me && isTop(me.role)
+  const approver = me?.role === 'lead' || top
+  const [tab, setTab] = useState<Tab>(top ? 'approvals' : 'mine')
   const [open, setOpen] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -29,7 +30,7 @@ export function LeavePage() {
       <PageHeader
         title="Leave"
         subtitle="Request leave, arrange cover for your classes, and track approval from your PAT Lead and the PAT Manager."
-        actions={me.role !== 'manager' && <Button onClick={() => setCreating(true)}>+ Request leave</Button>}
+        actions={!top && <Button onClick={() => setCreating(true)}>+ Request leave</Button>}
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label={`Annual leave taken ${year}`} value={`${leaveDaysTaken(db, me, year)} days`} hint="Approved working days" />
@@ -43,7 +44,7 @@ export function LeavePage() {
           value={tab}
           onChange={setTab}
           options={[
-            ...(me.role !== 'manager' ? [{ value: 'mine' as Tab, label: 'My leave' }] : []),
+            ...(!top ? [{ value: 'mine' as Tab, label: 'My leave' }] : []),
             { value: 'cover', label: `Cover requests (${coverAsks.length})` },
             ...(approver ? [{ value: 'approvals' as Tab, label: `Approvals (${approvals.length})` }] : []),
             { value: 'calendar', label: 'Team calendar' },
@@ -174,7 +175,7 @@ const WEEKS = 6
 
 function TeamCalendar({ onOpen }: { onOpen: (id: string) => void }) {
   const { db, me } = useDb()
-  const [campus, setCampus] = useState(me!.role === 'admin' || me!.role === 'manager' ? '' : (me!.campusId ?? ''))
+  const [campus, setCampus] = useState(seesAllCampuses(me!.role) ? '' : (me!.campusId ?? ''))
   const [offset, setOffset] = useState(0)
   const start = new Date()
   start.setDate(start.getDate() - ((start.getDay() + 6) % 7) + offset * 7) // Monday of the current week
@@ -192,7 +193,7 @@ function TeamCalendar({ onOpen }: { onOpen: (id: string) => void }) {
   return (
     <Card>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {(me!.role === 'admin' || me!.role === 'manager') && (
+        {seesAllCampuses(me!.role) && (
           <Select id="cal-campus" value={campus} onChange={(e) => setCampus(e.target.value)} className="max-w-xs">
             <option value="">All campuses</option>
             {db.campuses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

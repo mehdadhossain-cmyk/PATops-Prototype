@@ -1,6 +1,7 @@
 // Wellbeing plan rules: fortnightly meetings, and confirming each was logged in
 // the wellbeing team's own system. PATops tracks *that* it happened, not the content.
 import type { DbState, User, WellbeingCase, WellbeingMeeting } from './types'
+import { seesAllCampuses } from './logic'
 
 export const MEETING_INTERVAL_DAYS = 14
 /** A meeting counts as missed if not held within this many days after it was due. */
@@ -96,7 +97,7 @@ export function casePatId(db: DbState, c: WellbeingCase): string | null {
 }
 
 export function visibleCases(db: DbState, viewer: User): WellbeingCase[] {
-  if (viewer.role === 'admin' || viewer.role === 'manager') return db.wellbeingCases
+  if (seesAllCampuses(viewer.role)) return db.wellbeingCases
   const groupIds = new Set(
     (viewer.role === 'pat' ? db.groups.filter((g) => g.patId === viewer.id) : db.groups.filter((g) => g.campusId === viewer.campusId)).map((g) => g.id),
   )

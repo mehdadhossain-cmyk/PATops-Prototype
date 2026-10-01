@@ -1,18 +1,16 @@
 // Pure, UI-independent business rules. Easy to unit test and to move
 // server-side later.
-import type { CommLog, DbState, Group, Role, Student, TrainingModule, TrainingProgress, User } from './types'
+import { CHANNEL_LABEL, type CommLog, type DbState, type Group, type Permission, type Role, type Student, type TrainingModule, type TrainingProgress, type User } from './types'
 
 const day = 24 * 60 * 60 * 1000
 
+/** What a new joiner fills in themselves. Shift and working days are set by PAT Admins, not by the PAT. */
 export function isProfileComplete(u: User): boolean {
-  return Boolean(
-    u.phone.trim() &&
-      u.shift &&
-      u.workDays.length > 0 &&
-      u.emergencyContact?.name.trim() &&
-      u.emergencyContact?.phone.trim(),
-  )
+  return Boolean(u.phone.trim() && u.emergencyContact?.name.trim() && u.emergencyContact?.phone.trim())
 }
+
+/** Staff whose shift, working days and hours are managed by PAT Admins. */
+export const hasWorkPattern = (u: User) => u.role === 'pat' || u.role === 'lead'
 
 export function needsTraining(u: User): boolean {
   return u.role === 'pat' || u.role === 'lead'
@@ -85,9 +83,32 @@ export function scoreQuiz(m: TrainingModule, answers: number[]): number {
 
 // ---- Permissions -----------------------------------------------------------
 
-export const canManageStaff = (r: Role) => r === 'admin' || r === 'manager'
-export const canManageTraining = (r: Role) => r === 'admin' || r === 'manager'
+/** The PAT Manager and the Master Owner: full access, and they decide what each admin can do. */
+export const isTop = (r: Role) => r === 'owner' || r === 'manager'
+/** Roles that work across every campus. */
+export const seesAllCampuses = (r: Role) => r === 'owner' || r === 'manager' || r === 'admin'
+
+/** Whether someone can use an area of the app. Admins only get the areas they've been given. */
+export function can(u: User, p: Permission): boolean {
+  if (isTop(u.role)) return true
+  return u.role === 'admin' && u.permissions.includes(p)
+}
+
 export const canViewStaff = (r: Role) => r !== 'pat'
+
+/** Only the Master Owner can change the Master Owner's account; otherwise staff managers can edit anyone. */
+export function canEditStaffMember(viewer: User, target: User): boolean {
+  if (target.role === 'owner') return viewer.role === 'owner'
+  if (target.role === 'manager' || target.role === 'admin') return isTop(viewer.role)
+  return can(viewer, 'staff')
+}
+
+/** Roles a viewer may give a new account. */
+export function creatableRoles(viewer: User): Role[] {
+  if (viewer.role === 'owner') return ['owner', 'manager', 'admin', 'lead', 'pat']
+  if (viewer.role === 'manager') return ['admin', 'lead', 'pat']
+  return can(viewer, 'staff') ? ['lead', 'pat'] : []
+}
 
 /** Staff a viewer is allowed to see: leads only see their own campus. */
 export function visibleStaff(db: DbState, viewer: User): User[] {
@@ -117,8 +138,6 @@ export const fmtDateTime = (d: string | Date | null | undefined) =>
 
 /** Maximum students a PAT may hold (allocation rule from the PAT team). */
 export const PAT_STUDENT_CAP = 200
-
-export const canManageStudents = (r: Role) => r === 'admin' || r === 'manager'
 
 export function intakeLabel(db: DbState, intakeId: string): string {
   const i = db.intakes.find((x) => x.id === intakeId)
@@ -151,7 +170,7 @@ export function visibleGroups(db: DbState, viewer: User): Group[] {
 }
 
 export function visibleStudents(db: DbState, viewer: User): Student[] {
-  if (viewer.role === 'admin' || viewer.role === 'manager') return db.students
+  if (seesAllCampuses(viewer.role)) return db.students
   const ids = new Set(visibleGroups(db, viewer).map((g) => g.id))
   return db.students.filter((s) => ids.has(s.groupId))
 }
@@ -167,9 +186,12 @@ export const CONTACT_GAP_DAYS = 30
 
 const isLive = (c: CommLog) => !c.voidedAt
 
+/** e.g. "Phone call + WhatsApp". */
+export const channelsLabel = (c: CommLog) => c.channels.map((x) => CHANNEL_LABEL[x]).join(' + ')
+
 /** Logs a viewer may see: PATs see their own entries and anything about their students; leads their campus; admins all. */
 export function visibleComms(db: DbState, viewer: User): CommLog[] {
-  if (viewer.role === 'admin' || viewer.role === 'manager') return db.comms
+  if (seesAllCampuses(viewer.role)) return db.comms
   const groupIds = new Set(visibleGroups(db, viewer).map((g) => g.id))
   const studentIds = new Set(db.students.filter((s) => groupIds.has(s.groupId)).map((s) => s.id))
   const campusStaff = viewer.role === 'lead' ? new Set(db.users.filter((u) => u.campusId === viewer.campusId).map((u) => u.id)) : new Set([viewer.id])

@@ -1,23 +1,32 @@
 import { Link, useParams } from 'react-router-dom'
-import { ModuleStatusBadge, RoleBadge, StaffStatusBadge } from '../components/StatusBadges'
-import { Avatar, Button, Card, Empty, PageHeader, Progress, Stat } from '../components/ui'
+import { LevelBadge, ModuleStatusBadge, RoleBadge, StaffStatusBadge } from '../components/StatusBadges'
+import { Avatar, Button, Card, Empty, PageHeader, Progress, Select, Stat } from '../components/ui'
+import { AccessCard } from '../components/Access'
+import { ProbationCard } from '../components/Probation'
+import { StaffNotesCard } from '../components/StaffNotes'
+import { WorkPatternCard } from '../components/WorkPattern'
+import { hasProbation } from '../data/probation'
+import { PAT_LEVEL_LABEL, PAT_LEVELS, type PatLevel } from '../data/types'
 import {
   activeModules,
   campusName,
-  canManageStaff,
+  can,
+  canEditStaffMember,
   CONTACT_GAP_DAYS,
-  patCommStats,
   fmtDate,
   fmtDateTime,
   fmtSchedule,
   groupStudents,
-  PAT_STUDENT_CAP,
-  patGroups,
-  patStudentCount,
+  hasWorkPattern,
   isProfileComplete,
+  isTop,
   moduleDueDate,
   moduleStatus,
   needsTraining,
+  PAT_STUDENT_CAP,
+  patCommStats,
+  patGroups,
+  patStudentCount,
   progressFor,
   trainingSummary,
   visibleStaff,
@@ -31,12 +40,12 @@ import { useDb } from '../store/db'
 
 export function StaffDetailPage() {
   const { id } = useParams()
-  const { db, me, setStaffStatus } = useDb()
+  const { db, me, setStaffStatus, setPatLevel } = useDb()
   if (!me) return null
   const u = visibleStaff(db, me).find((x) => x.id === id)
   if (!u) return <p>Staff member not found or not visible to you.</p>
 
-  const manage = canManageStaff(me.role)
+  const manage = canEditStaffMember(me, u)
   const t = needsTraining(u) ? trainingSummary(db, u) : null
   const now = new Date()
   const history = db.audit.filter((e) => e.subjectUserId === u.id).slice().reverse()
@@ -51,7 +60,7 @@ export function StaffDetailPage() {
         title={u.name}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
-            <RoleBadge role={u.role} /> <StaffStatusBadge status={u.status} /> {u.email} · {campusName(db, u.campusId)}
+            <RoleBadge role={u.role} /> <LevelBadge level={u.level} /> <StaffStatusBadge status={u.status} /> {u.email} · {campusName(db, u.campusId)}
           </span>
         }
         actions={
@@ -72,7 +81,8 @@ export function StaffDetailPage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card title="Profile" className="lg:col-span-1">
+        <div className="space-y-5 lg:col-span-1">
+        <Card title="Profile">
           <div className="mb-4 flex items-center gap-3">
             <Avatar name={u.name} size="lg" />
             <div className="text-sm">
@@ -84,14 +94,28 @@ export function StaffDetailPage() {
           </div>
           <dl className="space-y-2 text-sm">
             <Row k="Phone" v={u.phone || '—'} />
-            <Row k="Shift" v={<span className="capitalize">{u.shift ?? '—'}</span>} />
-            <Row k="Work days" v={u.workDays.join(', ') || '—'} />
+            {u.role === 'pat' && (
+              <Row
+                k="PAT level"
+                v={manage ? (
+                  <Select id="pat-level" value={u.level ?? ''} onChange={(e) => setPatLevel(u.id, e.target.value as PatLevel)} className="max-w-40 py-1">
+                    {!u.level && <option value="">Not set</option>}
+                    {PAT_LEVELS.map((l) => <option key={l} value={l}>{PAT_LEVEL_LABEL[l]}</option>)}
+                  </Select>
+                ) : <LevelBadge level={u.level} />}
+              />
+            )}
             <Row k="Emergency contact" v={u.emergencyContact ? `${u.emergencyContact.name} (${u.emergencyContact.relationship || 'n/a'}) · ${u.emergencyContact.phone}` : '—'} />
             {u.bio && <Row k="Bio" v={u.bio} />}
           </dl>
         </Card>
+        {hasWorkPattern(u) && <WorkPatternCard user={u} editable={can(me, 'schedules')} />}
+        {u.role === 'admin' && <AccessCard user={u} editable={isTop(me.role)} />}
+        {isTop(me.role) && u.id !== me.id && <StaffNotesCard user={u} />}
+        </div>
 
         <div className="space-y-5 lg:col-span-2">
+          {isTop(me.role) && hasProbation(u) && <ProbationCard user={u} />}
           {t && (
             <>
               <div className="grid gap-4 sm:grid-cols-3">
@@ -185,7 +209,7 @@ export function StaffDetailPage() {
               </Card>
             )
           })()}
-          {u.role === 'pat' && <AllocationSettings user={u} editable={manage} />}
+          {u.role === 'pat' && can(me, 'allocation') && <AllocationSettings user={u} editable />}
           {u.role === 'pat' && (
             <Card title={`Groups · ${patStudentCount(db, u.id)} / ${PAT_STUDENT_CAP} students`}>
               {patGroups(db, u.id).length === 0 ? (

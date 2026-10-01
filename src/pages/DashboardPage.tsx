@@ -13,12 +13,14 @@ import { canDecide, weekdayOf } from '../data/leave'
 import { fmtRange, LeaveStatusBadge } from '../components/Leave'
 import { LEAVE_TYPE_LABEL } from '../data/types'
 import { caseActions, casePatId, compliance, visibleCases } from '../data/wellbeing'
-import { studentName } from '../data/logic'
+import { isTop, studentName } from '../data/logic'
 import { StaffStatusBadge } from '../components/StatusBadges'
 import { Button, Card, Empty, PageHeader, Progress, Stat, cx } from '../components/ui'
 import { campusName, CONTACT_GAP_DAYS, openFollowUps, patCommStats, courseName, fmtDate, fmtSchedule, groupStudents, intakeLabel, isProfileComplete, needsTraining, PAT_STUDENT_CAP, patGroups, patStudentCount, trainingSummary, visibleGroups, visibleStaff } from '../data/logic'
 import type { User } from '../data/types'
 import { useDb } from '../store/db'
+import { needsManager, probationRows } from '../data/probation'
+import { ProbationBadge } from '../components/Probation'
 
 export function DashboardPage() {
   const { me } = useDb()
@@ -187,6 +189,7 @@ function TeamDashboard({ me }: { me: User }) {
       <div className="mb-5">
         <TodayCard me={me} />
       </div>
+      {isTop(me.role) && <ProbationDueCard />}
 
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <Card title="Groups needing a PAT" actions={<Link to="/groups?pat=none" className="text-sm text-brand-600 hover:underline">View all</Link>}>
@@ -600,10 +603,32 @@ function LeaveCard({ me }: { me: User }) {
   )
 }
 
+/** Probations that need the manager: decide, or confirm to HR. */
+function ProbationDueCard() {
+  const { db } = useDb()
+  const rows = probationRows(db).filter(needsManager).sort((a, b) => a.end.localeCompare(b.end))
+  if (rows.length === 0) return null
+  return (
+    <div className="mb-5">
+      <Card title={`Probation · ${rows.length} need${rows.length === 1 ? 's' : ''} you`} actions={<Link to="/probation" className="text-sm text-brand-600 hover:underline">Open probation</Link>}>
+        <ul className="divide-y divide-slate-100 text-sm">
+          {rows.map((r) => (
+            <li key={r.user.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2">
+              <Link to={`/probation?open=${r.user.id}`} className="w-44 font-medium hover:text-brand-600">{r.user.name}</Link>
+              <span className="text-slate-500">{campusName(db, r.user.campusId)} · {r.daysLeft < 0 ? `ended ${-r.daysLeft} days ago` : r.daysLeft === 0 ? 'ends today' : `ends in ${r.daysLeft} days`}</span>
+              <span className="ml-auto"><ProbationBadge status={r.status} /></span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </div>
+  )
+}
+
 function LeaveApprovalsCard({ me }: { me: User }) {
   const { db } = useDb()
   const waiting = db.leaveRequests.filter((r) => canDecide(db, me, r))
-  if (me.role !== 'lead' && me.role !== 'manager') return null
+  if (me.role !== 'lead' && !isTop(me.role)) return null
   return (
     <div className="mb-5">
       <Card title={`Leave waiting for your approval · ${waiting.length}`} actions={<Link to="/leave" className="text-sm text-brand-600 hover:underline">Open leave</Link>}>

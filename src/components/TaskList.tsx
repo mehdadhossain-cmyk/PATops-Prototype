@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtDate } from '../data/logic'
-import { BUCKET_LABEL, bucketOf, SOURCE_LABEL, type Bucket, type Task, type TaskSource } from '../data/tasks'
+import { type Bucket, BUCKET_LABEL, bucketOf, canEditTask, SOURCE_LABEL, type Task, type TaskSource } from '../data/tasks'
+import type { AssignedTask } from '../data/types'
 import { useDb } from '../store/db'
+import { TaskModal } from './TaskModal'
 import { Badge, cx } from './ui'
 
 const sourceTone: Record<TaskSource, 'slate' | 'blue' | 'green' | 'amber' | 'red' | 'purple'> = {
-  training: 'purple', profile: 'purple', call_log: 'blue', wellbeing: 'green', at_risk: 'red', non_submission: 'amber', lsa: 'blue', leave: 'slate', assigned: 'purple', team: 'slate',
+  training: 'purple', profile: 'purple', call_log: 'blue', wellbeing: 'green', at_risk: 'red', non_submission: 'amber', lsa: 'blue', leave: 'slate', assigned: 'purple', probation: 'red', team: 'slate',
 }
 
 const bucketStyle: Record<Bucket, string> = {
@@ -18,7 +21,8 @@ const bucketStyle: Record<Bucket, string> = {
 
 /** Tasks grouped by when they're due. Assigned tasks can be ticked off here; others link to where the work is done. */
 export function TaskList({ tasks, limit, compact }: { tasks: Task[]; limit?: number; compact?: boolean }) {
-  const { toggleTaskDone } = useDb()
+  const { db, me, toggleTaskDone } = useDb()
+  const [editing, setEditing] = useState<AssignedTask | null>(null)
   const today = new Date().toISOString().slice(0, 10)
   const order: Bucket[] = ['overdue', 'today', 'week', 'later', 'undated']
   let shown = 0
@@ -46,7 +50,11 @@ export function TaskList({ tasks, limit, compact }: { tasks: Task[]; limit?: num
                     <Link to={t.link} className="text-sm font-medium text-slate-800 hover:text-brand-600">{t.title}</Link>
                     {!compact && t.detail && <div className="truncate text-xs text-slate-500">{t.detail}</div>}
                   </div>
-                  <Badge tone={sourceTone[t.source]}>{SOURCE_LABEL[t.source]}</Badge>
+                  {(() => {
+                    const a = t.assignedTaskId ? db.assignedTasks.find((x) => x.id === t.assignedTaskId) : undefined
+                    return a && me && canEditTask(me, a) ? <button type="button" onClick={() => setEditing(a)} className="text-xs text-brand-600 hover:underline">Edit</button> : null
+                  })()}
+                  <Badge tone={sourceTone[t.source]}>{t.detail === 'Personal reminder' ? 'Reminder' : SOURCE_LABEL[t.source]}</Badge>
                   <span className={cx('w-24 shrink-0 text-right text-xs tabular-nums', bucketStyle[b])}>{t.due ? fmtDate(t.due) : '—'}</span>
                 </li>
               ))}
@@ -54,6 +62,7 @@ export function TaskList({ tasks, limit, compact }: { tasks: Task[]; limit?: num
           </section>
         )
       })}
+      {editing && <TaskModal key={editing.id} personal={editing.personal} task={editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }

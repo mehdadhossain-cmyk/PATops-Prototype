@@ -1,8 +1,10 @@
-import { useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Badge, Card, Empty, Input, PageHeader, Progress, Select, Stat } from '../components/ui'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { GroupModal } from '../components/GroupModal'
+import { Badge, Button, Card, Empty, Input, PageHeader, Progress, Select, Stat } from '../components/ui'
 import {
   campusName,
+  can,
   courseName,
   fmtSchedule,
   groupStudents,
@@ -69,6 +71,8 @@ function MyGroups({ me }: { me: User }) {
 
 function AllGroups({ me }: { me: User }) {
   const { db } = useDb()
+  const navigate = useNavigate()
+  const [creating, setCreating] = useState(false)
   const [params, setParams] = useSearchParams()
   const f = {
     intake: params.get('intake') ?? '',
@@ -103,7 +107,12 @@ function AllGroups({ me }: { me: User }) {
 
   return (
     <div>
-      <PageHeader title="Groups" subtitle={me.role === 'lead' ? `Groups taught at ${campusName(db, me.campusId)}` : 'All teaching groups across campuses and intakes'} />
+      <PageHeader
+        title="Groups"
+        subtitle={me.role === 'lead' ? `Groups taught at ${campusName(db, me.campusId)}` : 'All teaching groups across campuses and intakes'}
+        actions={can(me, 'academic') && <Button onClick={() => setCreating(true)}>+ New group</Button>}
+      />
+      {creating && <GroupModal intakeId={f.intake || undefined} onClose={() => setCreating(false)} onSaved={(id) => navigate(`/groups/${id}`)} />}
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="Groups shown" value={rows.length} />
         <Stat label="Active students" value={studentTotal.toLocaleString()} />

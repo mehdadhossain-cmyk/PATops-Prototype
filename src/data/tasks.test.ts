@@ -20,7 +20,7 @@ describe('tasksFor', () => {
 
   it('includes call-log follow-ups the PAT set, and clears them when done', () => {
     const s = base.students.find((x) => base.groups.find((g) => g.id === x.groupId)?.patId === pat.id)!
-    const log: CommLog = { id: 'c1', authorId: pat.id, kind: 'individual', studentId: s.id, groupIds: [], channel: 'phone', direction: 'outbound', outcome: 'reached', reason: 'attendance', summary: 'x', at: now.toISOString(), loggedAt: now.toISOString(), followUpDate: today, followUpDoneAt: null, voidedAt: null, voidReason: '' }
+    const log: CommLog = { id: 'c1', authorId: pat.id, kind: 'individual', studentId: s.id, groupIds: [], channels: ['phone'], direction: 'outbound', outcome: 'reached', reason: 'attendance', summary: 'x', at: now.toISOString(), loggedAt: now.toISOString(), followUpDate: today, followUpDoneAt: null, voidedAt: null, voidReason: '' }
     const db: DbState = { ...base, comms: [log] }
     expect(ids(tasksFor(db, pat, now))).toContain('fu-c1')
     expect(ids(tasksFor({ ...db, comms: [{ ...log, followUpDoneAt: now.toISOString() }] }, pat, now))).not.toContain('fu-c1')
