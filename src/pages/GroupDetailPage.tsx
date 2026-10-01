@@ -5,12 +5,11 @@ import { StudentStatusBadge } from '../components/StatusBadges'
 import { Badge, Button, Card, CopyButton, Empty, Field, Input, PageHeader, Select, Tabs } from '../components/ui'
 import {
   campusName,
-  canManageStudents,
+  can,
   courseName,
   daysSince,
   fmtDate,
   lastReachedByStudent,
-  fmtSchedule,
   groupStudents,
   intakeLabel,
   PAT_STUDENT_CAP,
@@ -20,13 +19,16 @@ import {
   userName,
   visibleGroups,
 } from '../data/logic'
-import type { Group, User } from '../data/types'
+import { SLOT_LABEL, type Group, type User } from '../data/types'
 import { downloadCsv } from '../lib/csv'
 import { WellbeingBadge } from '../components/Wellbeing'
 import { AttendanceValue } from '../components/Risk'
 import { attendanceSummary } from '../data/risk'
 import { activePlanStudentIds } from '../data/wellbeing'
 import { useDb } from '../store/db'
+import { GroupModal } from '../components/GroupModal'
+import { DeleteGroupModal } from '../components/DeleteGroup'
+import { groupSessions } from '../data/allocation'
 
 export function GroupDetailPage() {
   const { id } = useParams()
@@ -36,6 +38,7 @@ export function GroupDetailPage() {
   const [selected, setSelected] = useState<string[]>([])
   const [logging, setLogging] = useState<{ mode: 'individual' | 'announcement'; ids: string[] } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [editing, setEditing] = useState<'edit' | 'delete' | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
   const lastReached = useMemo(() => lastReachedByStudent(db.comms), [db.comms])
   const onPlan = useMemo(() => activePlanStudentIds(db), [db])
@@ -61,6 +64,8 @@ export function GroupDetailPage() {
         subtitle={`${courseName(db, g.courseId)} · ${intakeLabel(db, g.intakeId)} · ${campusName(db, g.campusId)}`}
         actions={
           <>
+            {can(me, 'academic') && <Button variant="secondary" onClick={() => setEditing('edit')}>Edit group</Button>}
+            {can(me, 'academic') && <Button variant="secondary" className="text-rose-700" onClick={() => setEditing('delete')}>Delete</Button>}
             <Button variant="secondary" onClick={() => setLogging({ mode: 'announcement', ids: [] })}>📣 Log announcement</Button>
             {active.length > 0 && <CopyButton text={emails} label={`Copy ${active.length} emails`} className="px-3 py-2 text-sm" />}
             <Button
@@ -82,7 +87,8 @@ export function GroupDetailPage() {
         <Card title="Timetable">
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between"><dt className="text-slate-500">Shift</dt><dd><Badge tone={g.shift === 'morning' ? 'amber' : 'purple'}>{g.shift}</Badge></dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">Classes</dt><dd>{fmtSchedule(g)}</dd></div>
+            <div className="flex justify-between gap-3"><dt className="text-slate-500">Classes</dt><dd className="text-right">{groupSessions(g).map((s) => `${s.day} ${s.slots.map((x) => SLOT_LABEL[x].toLowerCase()).join(' + ')}`).join(', ')}</dd></div>
+            {g.room && <div className="flex justify-between"><dt className="text-slate-500">Room</dt><dd>{g.room}</dd></div>}
             <div className="flex justify-between"><dt className="text-slate-500">Active students</dt><dd className="tabular-nums">{active.length}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-500">Inactive</dt><dd className="tabular-nums">{all.length - active.length}</dd></div>
           </dl>
@@ -173,6 +179,8 @@ export function GroupDetailPage() {
         onClose={(msg) => { setLogging(null); if (msg) { setToast(msg); setSelected([]) } }}
       />
       <Toast message={toast} onDone={clearToast} />
+      {editing === 'edit' && <GroupModal group={g} onClose={() => setEditing(null)} />}
+      {editing === 'delete' && <DeleteGroupModal group={g} onClose={() => setEditing(null)} />}
     </div>
   )
 }
@@ -183,7 +191,7 @@ function PatCard({ group: g, me }: { group: Group; me: User }) {
   const [changing, setChanging] = useState(false)
   const [choice, setChoice] = useState(g.patId ?? '')
   const pat = db.users.find((u) => u.id === g.patId)
-  const manage = canManageStudents(me.role)
+  const manage = can(me, 'allocation')
 
   const candidates = db.users
     .filter((u) => u.role === 'pat' && u.status !== 'inactive' && u.status !== 'invited')

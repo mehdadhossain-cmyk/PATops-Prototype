@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { LsaModal, LsaStatusBadge } from '../components/Lsa'
 import { Badge, Button, Card, CopyButton, Empty, Input, PageHeader, Select, Stat, Tabs, Textarea, cx } from '../components/ui'
 import { previewLsas } from '../data/importer'
-import { campusName, canManageStudents, courseName, fmtDate, intakeLabel, studentName, userName, visibleStaff } from '../data/logic'
+import { campusName, can, courseName, fmtDate, intakeLabel, seesAllCampuses, studentName, userName, visibleStaff } from '../data/logic'
 import { intakeCodes, LSA_DUE_SOON_DAYS, LSA_SHEET_HEADER, lsaStatus, toSheetDate, visibleLsas, type LsaStatus } from '../data/lsa'
 import type { DbState, Lsa } from '../data/types'
 import { downloadCsv } from '../lib/csv'
@@ -33,7 +33,7 @@ export function LsaPage() {
   const lsas = visibleLsas(db, me)
   const statuses = lsas.map((l) => lsaStatus(l))
   const count = (s: LsaStatus) => statuses.filter((x) => x === s).length
-  const admin = canManageStudents(me.role)
+  const admin = can(me, 'lsa')
 
   return (
     <div>
@@ -117,7 +117,7 @@ function Records({ lsas, onEdit }: { lsas: Lsa[]; onEdit: (l: Lsa) => void }) {
           <option value="ended">Ended</option>
           <option value="">All</option>
         </Select>
-        {(me?.role === 'admin' || me?.role === 'manager') && (
+        {(me && seesAllCampuses(me.role)) && (
           <Select id="lsa-campus" value={campus} onChange={(e) => setCampus(e.target.value)}>
             <option value="">All campuses</option>
             {db.campuses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

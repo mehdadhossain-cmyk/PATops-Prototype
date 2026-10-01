@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CaseActionButtons, CaseStatusBadge, CycleLegend, CycleStrip, SendFormModal } from '../components/Wellbeing'
 import { Badge, Button, Card, Empty, PageHeader, Progress, Select, Stat, Tabs, cx } from '../components/ui'
-import { campusName, fmtDate, studentName, userName, visibleStaff } from '../data/logic'
+import { campusName, fmtDate, seesAllCampuses, studentName, userName, visibleStaff } from '../data/logic'
 import { WELLBEING_CATEGORY_LABEL, type WellbeingCase } from '../data/types'
 import { caseActions, casePatId, compliance, LOG_DEADLINE_DAYS, MEETING_GRACE_DAYS, visibleCases, type WellbeingAction } from '../data/wellbeing'
 import { useDb } from '../store/db'
@@ -67,7 +67,7 @@ export function WellbeingPage() {
             ...(staff ? [{ value: 'pats' as Tab, label: 'By PAT' }] : []),
           ]}
         />
-        {(me.role === 'admin' || me.role === 'manager') && (
+        {seesAllCampuses(me.role) && (
           <Select id="wb-campus" value={campus} onChange={(e) => setCampus(e.target.value)} className="max-w-xs">
             <option value="">All campuses</option>
             {db.campuses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

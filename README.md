@@ -24,7 +24,11 @@ The site is then at `https://<owner>.github.io/PATops-Prototype/`.
 
 ## Roles
 
-`PAT Manager → PAT Admin (all campuses) → PAT Lead (one per campus) → PAT`
+`Master Owner → PAT Manager → PAT Admin (all campuses) → PAT Lead (one per campus) → PAT`
+
+- **Master Owner** and **PAT Manager** have full access. They are the only ones who can grant admin access, see probation and read private manager notes. Only the Master Owner can edit the Master Owner's account or create managers.
+- **PAT Admins** only get the areas they've been given (Settings → Admin access, or Change access on the admin's staff page): PAT allocation, working days & hours, staff accounts, training content, intakes/groups/students, attendance & retention, non-submissions, LSA records, assigning tasks, audit export, settings. In the demo, only the first admin can allocate PATs.
+- **PATs** are classified as **Trainee**, **Junior** or **Senior**. PATs can't change their own shift, working days or hours.
 
 The sign-in screen lets you pick any seeded user to see the app from their point of view.
 
@@ -44,6 +48,7 @@ The sign-in screen lets you pick any seeded user to see the app from their point
 | 9 | **Unified task list** with due dates, plus assigned tasks | ✅ Done |
 | 10 | **One-click audit export** of a PAT's full history (report + spreadsheet) | ✅ Done |
 | 11 | **PAT allocation**: sheet import, drag-and-drop board with live rule checks, auto-allocate, drafts and publish | ✅ Done |
+| 12 | **Feedback round 1**: roles & admin access, PAT levels, probation, manager notes, group CRUD, task edits, multi-channel call log | ✅ Done |
 
 ## Step 1: what you can test
 
@@ -280,6 +285,25 @@ Open **PAT allocation** in the menu (Admins, Leads and the Manager).
 - The student count comes from the sheet, then from live student records, then is flagged as unknown.
 - Admins can override a hard rule, but only with a reason.
 
+## Step 12: feedback round 1
+
+| Feedback | What changed |
+|---|---|
+| Edit/delete a task assigned to several PATs | **Edit** and **Delete** on every row of *My tasks → Assigned by me*. Editing changes the title, details, due date and who it's assigned to; anyone removed loses their tick. The creator, the PAT Manager and the Master Owner can edit. |
+| Edit/delete personal reminders | **Edit** next to each reminder in *To do* (on the dashboard as well), with **Delete reminder** in the form. Done reminders can be edited or deleted from *Done*. |
+| Call log channel multi-select | Tick every channel used, e.g. *Phone call + WhatsApp*. The channel filter matches any of them, and exports list them all. Older entries are converted automatically. |
+| New/edit group on an intake | **+ Group** on each intake row (Intakes) and **+ New group** on Groups (it uses the intake filter if one is set). Class sessions are a Mon–Sun × morning/afternoon/evening grid, so they feed the allocation rules directly. |
+| Group CRUD | **Edit group** and **Delete** on the group page. Deleting asks where to move the group's students, and removes the group from allocation drafts. A group that appears in call-log announcements or leave cover is kept for the audit trail. |
+| Days off red on allocation cards | On each PAT lane, the "off …" label, the day letters and the grid cells for days off are red. A group on a day off shows as a solid red clash. |
+| Trainee / Junior / Senior | **PAT level** on the staff page (staff-account access), a badge on the staff list, allocation lanes and audit pack, and a level filter on Staff. New PATs start as Trainee. |
+| Probation confirmation | New **Probation** page and a dashboard card for the Manager/Owner. Every PAT's probation is 4 months from the start date. The Manager/Owner gets a task 14 days before it ends, and it becomes overdue on the end date. **Pass and confirm** (choose the level after probation), **Extend probation** (+1/2/3 months or a date) or **Not passed**. The next task is **Confirm to the HR manager**, with a ready-made email (open in email or copy), then **Mark as confirmed to HR**. A timeline shows Started → Ends → Decision → HR. The HR manager's contact is set in Settings. |
+| Allocation only for Manager and Owner | PAT allocation (board, drafts, sheet import, per-PAT allocation settings, changing a group's PAT) needs the *PAT allocation* permission. The Manager and Owner always have it; admins only if granted; leads no longer see it. |
+| Not every admin has every access | Per-admin permissions, set by the Manager or Owner (Settings → Admin access grid, or the admin's staff page). Menus, pages and buttons follow them. |
+| Private notes about PATs | **Manager notes** on each staff page, visible only to the PAT Manager and Master Owner. They aren't written to the activity history or included in audit exports. |
+| PATs can't change working days/hours | The working pattern (shift, working days/days off, hours) moved to a **Working pattern** card. PATs see it read-only; admins with *Working days & hours* access edit it. A PAT's profile is complete without it. |
+
+**Try it:** sign in as *Jordan Hayes* (Master Owner) or *Sarah Mitchell* (PAT Manager) and open **Probation**. Then sign in as different PAT Admins to compare their menus.
+
 ## Code layout
 
 ```
@@ -310,7 +334,15 @@ src/data/allocationSheets.ts  example workbook and draft export (sheet layout)
 src/components/AllocationBoard.tsx  drag-and-drop board
 src/lib/xlsxRead.ts       small .xlsx reader
 src/store/persist.ts      IndexedDB persistence (migrates older localStorage data)
-src/data/logic.ts   pure business rules + permissions (easy to move server-side)
+src/data/logic.ts   pure business rules + permissions: can(), isTop(), canEditStaffMember() (easy to move server-side)
+src/data/probation.ts     probation dates, status, reminders, HR email (+ tests)
+src/data/permissions.test.ts  roles, admin permissions, task edit rights, v11 migration
+src/components/Probation.tsx  probation timeline and manager actions
+src/components/Access.tsx     admin access card and grid
+src/components/WorkPattern.tsx  shift / working days / hours card (days off in red)
+src/components/GroupModal.tsx, DeleteGroup.tsx  create, edit and delete groups
+src/components/TaskModal.tsx  create and edit tasks and reminders
+src/components/StaffNotes.tsx manager-only notes
 src/store/db.tsx    state + actions, persisted to localStorage, every action audited
 src/pages/*         screens
 src/components/*    layout and UI kit

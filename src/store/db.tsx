@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { buildSeed, DB_VERSION } from '../data/seed'
+import { buildSeed, DB_VERSION, migrateToV11 } from '../data/seed'
 import { buildAcademicSeed } from '../data/seedAcademic'
 import { buildCommsSeed } from '../data/seedComms'
 import { buildWellbeingSeed } from '../data/seedWellbeing'
@@ -9,11 +9,13 @@ import { buildLsaSeed } from '../data/seedLsa'
 import { buildLeaveSeed } from '../data/seedLeave'
 import { buildTasksSeed } from '../data/seedTasks'
 import { buildAllocationSeed } from '../data/seedAllocation'
-import { isProfileComplete, scoreQuiz } from '../data/logic'
+import { can, isProfileComplete, scoreQuiz } from '../data/logic'
 import { loadSaved, save } from './persist'
 import type { RetentionStage } from '../data/types'
 import type { AttendanceRow, LsaRow, NonSubmissionRow } from '../data/importer'
-import type { AllocationDraft, AllocationProfile, AssignedTask, CoverSlot, LeaveRequest, LeaveType, Lsa } from '../data/types'
+import { WEEKDAYS, type Shift, type Weekday } from '../data/types'
+import type { AllocationDraft, AllocationProfile, AppSettings, AssignedTask, CoverSlot, LeaveRequest, LeaveType, Lsa, PatLevel, Permission, Probation, ProbationOutcome, StaffNote } from '../data/types'
+import { emptyProbation } from '../data/probation'
 import type { Suggestion } from '../data/allocation'
 import { statusAfterCover } from '../data/leave'
 import type { FollowUpStatus, NonSubmission, SubmissionPeriod } from '../data/types'
@@ -55,6 +57,8 @@ function migrate(d: DbState): DbState {
   if (next.version === 8) next = { ...next, ...buildTasksSeed(next.users), version: 9 }
   // v9 -> v10: add allocation settings and the January 2027 draft (also tidies demo timetable clashes).
   if (next.version === 9) next = { ...next, ...buildAllocationSeed(next.users, next.groups, next.campuses), version: 10 }
+  // v10 -> v11: owner, admin permissions, PAT levels, probation, private notes, multi-channel call logs.
+  if (next.version === 10) next = migrateToV11(next)
   if (next.version !== DB_VERSION) throw new Error('Unknown data version')
   return next
 }
@@ -76,6 +80,11 @@ const storage = {
       // ignore
     }
   },
+}
+
+function upsertProbation(list: Probation[], userId: string, fn: (p: Probation) => Probation): Probation[] {
+  const existing = list.find((p) => p.userId === userId)
+  return existing ? list.map((p) => (p === existing ? fn(p) : p)) : [...list, fn(emptyProbation(userId))]
 }
 
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -138,7 +147,20 @@ interface DbContextValue {
   applyAllocationImport: (input: { groups: Group[]; newUniversities: University[]; newCourses: Course[]; newIntakes: Intake[]; draftName: string | null; profiles: AllocationProfile[]; userPatches: { id: string; patch: Partial<User> }[]; source: string }) => string | null
   createTask: (input: { title: string; description: string; dueDate: string | null; assigneeIds: string[]; personal: boolean }) => void
   toggleTaskDone: (taskId: string, done: boolean) => void
+  updateTask: (taskId: string, patch: { title: string; description: string; dueDate: string | null; assigneeIds: string[] }) => void
   deleteTask: (taskId: string) => void
+  setPermissions: (userId: string, permissions: Permission[]) => void
+  setPatLevel: (userId: string, level: PatLevel) => void
+  saveWorkPattern: (userId: string, input: { shift: Shift | null; workDays: Weekday[]; workHours: string | null }) => void
+  decideProbation: (userId: string, outcome: ProbationOutcome, note: string, level: PatLevel | null) => void
+  extendProbation: (userId: string, until: string, note: string) => void
+  reopenProbation: (userId: string) => void
+  markProbationSentToHr: (userId: string) => void
+  addStaffNote: (userId: string, text: string) => void
+  updateStaffNote: (noteId: string, text: string) => void
+  deleteStaffNote: (noteId: string) => void
+  saveSettings: (patch: Partial<AppSettings>) => void
+  deleteGroup: (groupId: string, moveStudentsTo: string | null) => void
   submitLeave: (input: { type: LeaveType; startDate: string; endDate: string; reason: string; covers: { date: string; groupId: string; coverPatId: string }[] }) => void
   respondCover: (slotId: string, accept: boolean, note: string) => void
   replaceCover: (slotId: string, coverPatId: string) => void
@@ -238,6 +260,8 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
         const user: User = {
           id: uid('u'),
           ...input,
+          level: input.role === 'pat' ? 'trainee' : null,
+          permissions: [],
           status: 'invited',
           phone: '',
           shift: null,
@@ -448,7 +472,7 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
         const meeting = { id: uid('wm'), caseId, cycle, heldAt: m.heldAt, outcome: m.outcome, recorded: m.recorded, loggedAt: m.logged ? t : null, recordedBy: me.id }
         const comm: CommLog | null = m.addToCallLog
           ? {
-              id: uid('cl'), authorId: me.id, kind: 'individual', studentId: c.studentId, groupIds: [], channel: 'teams', direction: 'outbound',
+              id: uid('cl'), authorId: me.id, kind: 'individual', studentId: c.studentId, groupIds: [], channels: ['teams'], direction: 'outbound',
               outcome: m.outcome === 'held' ? 'reached' : 'no_answer', reason: 'wellbeing',
               summary: m.outcome === 'held' ? `Fortnightly wellbeing meeting on Teams (fortnight ${cycle + 1}).` : `Fortnightly wellbeing meeting (fortnight ${cycle + 1}): student did not attend.`,
               at: m.heldAt, loggedAt: t, followUpDate: null, followUpDoneAt: null, voidedAt: null, voidReason: '',
@@ -488,7 +512,7 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
         const s = db.students.find((x) => x.id === studentId)
         const patId = db.groups.find((g) => g.id === s?.groupId)?.patId ?? null
         const note = { id: uid('rn'), studentId, authorId: me.id, at: now(), text, stage }
-        const withdraw = stage === 'withdrawn' && (me.role === 'admin' || me.role === 'manager')
+        const withdraw = stage === 'withdrawn' && can(me, 'attendance')
         mutate(
           (d) => ({
             ...d,
@@ -525,7 +549,7 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
         const t = now()
         const comm: CommLog | null = callLog
           ? {
-              id: uid('cl'), authorId: me.id, kind: 'individual', studentId: n.studentId, groupIds: [], channel: callLog, direction: 'outbound',
+              id: uid('cl'), authorId: me.id, kind: 'individual', studentId: n.studentId, groupIds: [], channels: [callLog], direction: 'outbound',
               outcome: patch.status === 'no_response' ? 'no_answer' : 'reached', reason: 'assessment',
               summary: `Non-submission follow-up (${n.assessment}): ${patch.note || patch.status.replace('_', ' ')}`,
               at: t, loggedAt: t, followUpDate: patch.expectedDate, followUpDoneAt: null, voidedAt: null, voidReason: '',
@@ -694,6 +718,114 @@ function LoadedDbProvider({ initial, children }: { initial: DbState; children: R
             ),
           }),
           t && !t.personal ? { type: done ? 'task.done' : 'task.reopened', message: `${done ? 'Completed' : 'Reopened'} task "${t.title}"`, subjectUserId: me.id } : undefined,
+        )
+      },
+      updateTask: (taskId, patch) => {
+        const t = db.assignedTasks.find((x) => x.id === taskId)
+        if (!t) return
+        // People taken off the task lose their tick; people added start as not done.
+        mutate(
+          (d) => ({ ...d, assignedTasks: d.assignedTasks.map((x) => (x.id !== taskId ? x : { ...x, ...patch, completions: x.completions.filter((c) => patch.assigneeIds.includes(c.userId)) })) }),
+          t.personal ? undefined : { type: 'task.updated', message: `Edited assigned task "${patch.title}" (${patch.assigneeIds.length} ${patch.assigneeIds.length === 1 ? 'person' : 'people'}${patch.dueDate ? `, due ${patch.dueDate}` : ''})`, subjectUserId: null },
+        )
+      },
+      setPermissions: (userId, permissions) => {
+        const u = db.users.find((x) => x.id === userId)
+        mutate((d) => ({ ...d, users: d.users.map((x) => (x.id === userId ? { ...x, permissions } : x)) }), {
+          type: 'staff.permissions', message: `Access for ${u?.name} set to: ${permissions.length ? permissions.join(', ') : 'none'}`, subjectUserId: userId,
+        })
+      },
+      saveWorkPattern: (userId, input) => {
+        const u = db.users.find((x) => x.id === userId)
+        if (!u) return
+        const prof = db.allocationProfiles.find((p) => p.userId === userId)
+        const base: AllocationProfile = prof ?? { userId, workHours: null, availableFrom: null, maxStudents: null, minStudents: null, targetGroups: null, uniTargets: {}, preferredCampusIds: [], notes: '' }
+        const off = WEEKDAYS.filter((d) => !input.workDays.includes(d))
+        mutate(
+          (d) => ({
+            ...d,
+            users: d.users.map((x) => (x.id === userId ? { ...x, shift: input.shift, workDays: input.workDays } : x)),
+            allocationProfiles: [...d.allocationProfiles.filter((p) => p.userId !== userId), { ...base, workHours: input.workHours }],
+          }),
+          { type: 'staff.work_pattern', message: `Working pattern set: ${input.shift ?? 'no'} shift, works ${input.workDays.join(', ') || 'no days'}${off.length ? ` (off ${off.join(', ')})` : ''}${input.workHours ? `, hours ${input.workHours}` : ''}`, subjectUserId: userId },
+        )
+      },
+      setPatLevel: (userId, level) => {
+        const u = db.users.find((x) => x.id === userId)
+        if (!u || u.level === level) return
+        mutate((d) => ({ ...d, users: d.users.map((x) => (x.id === userId ? { ...x, level } : x)) }), {
+          type: 'staff.level', message: `PAT level changed from ${u.level ?? 'none'} to ${level}`, subjectUserId: userId,
+        })
+      },
+      decideProbation: (userId, outcome, note, level) => {
+        if (!me) return
+        const t = now()
+        const text = outcome === 'confirmed' ? 'Probation passed and confirmed' : 'Probation not passed'
+        // Probation details stay with the manager; the activity history (seen by leads) only records that a decision was made.
+        mutate(
+          (d) => ({
+            ...d,
+            probations: upsertProbation(d.probations, userId, (p) => ({ ...p, outcome, note, decidedAt: t, decidedBy: me.id, hrNotifiedAt: null, hrNotifiedBy: null, events: [...p.events, { at: t, by: me.id, text: note ? `${text}: ${note}` : text }] })),
+            users: level ? d.users.map((x) => (x.id === userId ? { ...x, level } : x)) : d.users,
+          }),
+          { type: 'probation.decided', message: 'Probation outcome recorded by the PAT Manager', subjectUserId: userId },
+        )
+      },
+      extendProbation: (userId, until, note) => {
+        if (!me) return
+        const t = now()
+        mutate(
+          (d) => ({ ...d, probations: upsertProbation(d.probations, userId, (p) => ({ ...p, extendedTo: until, outcome: null, decidedAt: null, decidedBy: null, hrNotifiedAt: null, hrNotifiedBy: null, events: [...p.events, { at: t, by: me.id, text: `Probation extended to ${until}${note ? `: ${note}` : ''}` }] })) }),
+          { type: 'probation.extended', message: `Probation extended to ${until}`, subjectUserId: userId },
+        )
+      },
+      reopenProbation: (userId) => {
+        if (!me) return
+        const t = now()
+        mutate((d) => ({ ...d, probations: upsertProbation(d.probations, userId, (p) => ({ ...p, outcome: null, decidedAt: null, decidedBy: null, hrNotifiedAt: null, hrNotifiedBy: null, events: [...p.events, { at: t, by: me.id, text: 'Decision withdrawn (not yet sent to HR)' }] })) }))
+      },
+      markProbationSentToHr: (userId) => {
+        if (!me) return
+        const t = now()
+        const hr = db.settings.hrManagerName || 'the HR manager'
+        mutate(
+          (d) => ({ ...d, probations: upsertProbation(d.probations, userId, (p) => ({ ...p, hrNotifiedAt: t, hrNotifiedBy: me.id, events: [...p.events, { at: t, by: me.id, text: `Outcome confirmed to ${hr} (HR manager)` }] })) }),
+          { type: 'probation.hr', message: 'Probation outcome confirmed to HR', subjectUserId: userId },
+        )
+      },
+      // Private notes are deliberately not written to the audit trail, which leads and exports can see.
+      addStaffNote: (userId, text) => {
+        if (!me) return
+        const note: StaffNote = { id: uid('sn'), userId, authorId: me.id, at: now(), editedAt: null, text }
+        setDb((d) => ({ ...d, staffNotes: [...d.staffNotes, note] }))
+      },
+      updateStaffNote: (noteId, text) => {
+        setDb((d) => ({ ...d, staffNotes: d.staffNotes.map((n) => (n.id === noteId ? { ...n, text, editedAt: now() } : n)) }))
+      },
+      deleteStaffNote: (noteId) => {
+        setDb((d) => ({ ...d, staffNotes: d.staffNotes.filter((n) => n.id !== noteId) }))
+      },
+      saveSettings: (patch) => {
+        mutate((d) => ({ ...d, settings: { ...d.settings, ...patch } }), { type: 'settings.updated', message: 'Updated the HR manager contact', subjectUserId: null })
+      },
+      deleteGroup: (groupId, moveStudentsTo) => {
+        const g = db.groups.find((x) => x.id === groupId)
+        if (!g) return
+        const target = db.groups.find((x) => x.id === moveStudentsTo)
+        const moved = db.students.filter((s) => s.groupId === groupId).length
+        mutate(
+          (d) => ({
+            ...d,
+            groups: d.groups.filter((x) => x.id !== groupId),
+            students: target ? d.students.map((s) => (s.groupId === groupId ? { ...s, groupId: target.id } : s)) : d.students,
+            allocationDrafts: d.allocationDrafts.map((dr) => {
+              if (!dr.groupIds.includes(groupId)) return dr
+              const assignments = { ...dr.assignments }
+              delete assignments[groupId]
+              return { ...dr, groupIds: dr.groupIds.filter((x) => x !== groupId), assignments }
+            }),
+          }),
+          { type: 'group.deleted', message: `Deleted group ${g.code}${target ? `; moved ${moved} student${moved === 1 ? '' : 's'} to ${target.code}` : ''}`, subjectUserId: g.patId },
         )
       },
       deleteTask: (taskId) => {

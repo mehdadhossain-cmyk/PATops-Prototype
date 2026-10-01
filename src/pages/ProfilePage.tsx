@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Card, Field, Input, PageHeader, Select, Textarea, cx } from '../components/ui'
-import { canManageStaff, isProfileComplete, needsTraining } from '../data/logic'
-import { WEEKDAYS, type Shift, type User, type Weekday } from '../data/types'
+import { Button, Card, Field, Input, PageHeader, Select, Textarea } from '../components/ui'
+import { WorkPatternCard } from '../components/WorkPattern'
+import { can, canEditStaffMember, hasWorkPattern, isProfileComplete, needsTraining } from '../data/logic'
+import type { User } from '../data/types'
 import { useDb } from '../store/db'
 
 /** Profile setup / edit. PATs edit their own; admins can edit anyone via /staff/:id/edit. */
@@ -12,8 +13,8 @@ export function ProfilePage() {
   const navigate = useNavigate()
   const target = id ? db.users.find((u) => u.id === id) : me
   if (!me || !target) return <p>User not found.</p>
-  if (target.id !== me.id && !canManageStaff(me.role)) return <p>You don't have access to edit this profile.</p>
-  return <ProfileForm key={target.id} user={target} isSelf={target.id === me.id} onSave={(patch) => {
+  if (target.id !== me.id && !canEditStaffMember(me, target)) return <p>You don't have access to edit this profile.</p>
+  return <ProfileForm key={target.id} user={target} isSelf={target.id === me.id} patternEditable={can(me, 'schedules')} onSave={(patch) => {
     updateProfile(target.id, patch)
     if (!target.profileCompletedAt && isProfileComplete({ ...target, ...patch }) && target.id === me.id && needsTraining(target)) {
       navigate('/training')
@@ -23,12 +24,10 @@ export function ProfilePage() {
   }} campuses={db.campuses} />
 }
 
-function ProfileForm({ user, isSelf, onSave, campuses }: { user: User; isSelf: boolean; onSave: (p: Partial<User>) => void; campuses: { id: string; name: string }[] }) {
+function ProfileForm({ user, isSelf, patternEditable, onSave, campuses }: { user: User; isSelf: boolean; patternEditable: boolean; onSave: (p: Partial<User>) => void; campuses: { id: string; name: string }[] }) {
   const [form, setForm] = useState({
     name: user.name,
     phone: user.phone,
-    shift: user.shift ?? '',
-    workDays: user.workDays,
     ecName: user.emergencyContact?.name ?? '',
     ecRel: user.emergencyContact?.relationship ?? '',
     ecPhone: user.emergencyContact?.phone ?? '',
@@ -42,13 +41,9 @@ function ProfileForm({ user, isSelf, onSave, campuses }: { user: User; isSelf: b
     setForm((f) => ({ ...f, [k]: v }))
     setSaved(false)
   }
-  const toggleDay = (d: Weekday) =>
-    set('workDays', form.workDays.includes(d) ? form.workDays.filter((x) => x !== d) : WEEKDAYS.filter((w) => w === d || form.workDays.includes(w)))
 
   const errors = {
     phone: !form.phone.trim() ? 'Required' : !/^[0-9+ ]{10,15}$/.test(form.phone.trim()) ? 'Enter a valid UK phone number' : '',
-    shift: !form.shift ? 'Required' : '',
-    workDays: form.workDays.length === 0 ? 'Choose at least one working day' : '',
     ecName: !form.ecName.trim() ? 'Required' : '',
     ecPhone: !form.ecPhone.trim() ? 'Required' : '',
   }
@@ -62,8 +57,6 @@ function ProfileForm({ user, isSelf, onSave, campuses }: { user: User; isSelf: b
     onSave({
       name: form.name.trim(),
       phone: form.phone.trim(),
-      shift: form.shift as Shift,
-      workDays: form.workDays,
       emergencyContact: { name: form.ecName.trim(), relationship: form.ecRel.trim(), phone: form.ecPhone.trim() },
       bio: form.bio,
       campusId: user.role === 'lead' || user.role === 'pat' ? form.campusId || null : null,
@@ -76,7 +69,7 @@ function ProfileForm({ user, isSelf, onSave, campuses }: { user: User; isSelf: b
     <div className="max-w-3xl">
       <PageHeader
         title={isSelf ? (firstSetup ? 'Set up your profile' : 'My profile') : `Edit profile · ${user.name}`}
-        subtitle={firstSetup && isSelf ? 'Complete your profile to unlock your training package. Your work days and shift are used later for group allocation.' : user.email}
+        subtitle={firstSetup && isSelf ? 'Complete your profile to unlock your training package. Your shift and working days are set by the PAT Admins.' : user.email}
       />
       <form onSubmit={submit} className="space-y-5">
         <Card title="Personal details">
@@ -99,39 +92,6 @@ function ProfileForm({ user, isSelf, onSave, campuses }: { user: User; isSelf: b
                 </Select>
               </Field>
             )}
-          </div>
-        </Card>
-
-        <Card title="Working pattern">
-          <div className="space-y-4">
-            <Field group label="Shift" error={err('shift')}>
-              <div className="flex gap-2">
-                {(['morning', 'evening'] as Shift[]).map((s) => (
-                  <button
-                    type="button"
-                    key={s}
-                    onClick={() => set('shift', s)}
-                    className={cx('rounded-lg border px-4 py-2 text-sm capitalize', form.shift === s ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-slate-300 hover:bg-slate-50')}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            <Field group label="Working days" error={err('workDays')}>
-              <div className="flex flex-wrap gap-2">
-                {WEEKDAYS.map((d) => (
-                  <button
-                    type="button"
-                    key={d}
-                    onClick={() => toggleDay(d)}
-                    className={cx('w-14 rounded-lg border py-2 text-sm', form.workDays.includes(d) ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 hover:bg-slate-50')}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </Field>
           </div>
         </Card>
 
@@ -161,6 +121,7 @@ function ProfileForm({ user, isSelf, onSave, campuses }: { user: User; isSelf: b
           {touched && hasErrors && <span className="text-sm text-rose-600">Please fix the highlighted fields</span>}
         </div>
       </form>
+      {hasWorkPattern(user) && <div className="mt-5"><WorkPatternCard user={user} editable={patternEditable} /></div>}
     </div>
   )
 }

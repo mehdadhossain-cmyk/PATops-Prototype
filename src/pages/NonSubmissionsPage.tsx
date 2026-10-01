@@ -4,7 +4,7 @@ import { FollowUpBadge, FollowUpEditor, StudentLink } from '../components/NonSub
 import { WellbeingBadge } from '../components/Wellbeing'
 import { Badge, Button, Card, CopyButton, Empty, Field, Input, Modal, PageHeader, Progress, Select, Stat, Tabs, Textarea, cx } from '../components/ui'
 import { nonSubmissionTemplate, previewNonSubmissions } from '../data/importer'
-import { campusName, canManageStudents, fmtDate, fmtDateTime, intakeLabel, studentName, userName, visibleStaff } from '../data/logic'
+import { campusName, can, fmtDate, fmtDateTime, intakeLabel, seesAllCampuses, studentName, userName, visibleStaff } from '../data/logic'
 import { attendanceSummary, RISK_THRESHOLD } from '../data/risk'
 import { isResolved, itemPatId, progress, visibleNonSubmissions } from '../data/submissions'
 import { FOLLOW_UP_LABEL, type DbState, type FollowUpStatus, type NonSubmission, type SubmissionPeriod } from '../data/types'
@@ -24,7 +24,7 @@ export function NonSubmissionsPage() {
   const periodId = params.get('period') ?? periods[0]?.id ?? ''
   const period = db.submissionPeriods.find((p) => p.id === periodId)
   if (!me) return null
-  const admin = canManageStudents(me.role)
+  const admin = can(me, 'submissions')
   const items = visibleNonSubmissions(db, me, periodId)
   const prog = progress(items, period)
   const today = new Date().toISOString().slice(0, 10)
@@ -144,7 +144,7 @@ function ItemList({ items, period }: { items: NonSubmission[]; period: Submissio
           <option value="">All</option>
           {(Object.keys(FOLLOW_UP_LABEL) as FollowUpStatus[]).map((k) => <option key={k} value={k}>{FOLLOW_UP_LABEL[k]}</option>)}
         </Select>
-        {(me?.role === 'admin' || me?.role === 'manager') && (
+        {(me && seesAllCampuses(me.role)) && (
           <Select id="ns-campus" value={campus} onChange={(e) => setCampus(e.target.value)}>
             <option value="">All campuses</option>
             {db.campuses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

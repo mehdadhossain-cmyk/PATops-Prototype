@@ -5,7 +5,7 @@ import { ROLE_LABEL, type Role } from '../data/types'
 import { useDb } from '../store/db'
 import { StaffStatusBadge } from '../components/StatusBadges'
 
-const roleOrder: Role[] = ['manager', 'admin', 'lead', 'pat']
+const roleOrder: Role[] = ['owner', 'manager', 'admin', 'lead', 'pat']
 
 /**
  * Demo sign-in: pick any seeded user to see the app from their point of view.
@@ -45,7 +45,7 @@ export function LoginPage() {
 
           <div className="mb-5 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
             <strong>Suggested walkthrough:</strong> sign in as <em>Connor Doyle</em> (invited, set up profile), then <em>Adam Clarke</em>{' '}
-            (doing training), then a PAT Admin to see the training tracker and create a new PAT account.
+            (doing training), then <em>Jordan Hayes</em> (Master Owner) to see probation, admin access and manager notes. PAT Admins each have different access.
           </div>
 
           <div className="space-y-5">

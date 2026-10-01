@@ -3,16 +3,16 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Button, Card, Empty, Field, Input, PageHeader, cx } from '../components/ui'
 import { RoleBadge, StaffStatusBadge } from '../components/StatusBadges'
 import { auditFileBase, buildAuditPack, rangeLabel, type AuditRange } from '../data/audit'
-import { campusName, fmtStamp, userName, visibleStaff } from '../data/logic'
+import { campusName, can, fmtStamp, userName, visibleStaff } from '../data/logic'
 import type { User } from '../data/types'
 import { auditReportHtml, auditWorkbook } from '../lib/auditExport'
 import { inHostedViewer, saveFile } from '../lib/download'
 import { useDb } from '../store/db'
 
-/** Who may export whose audit pack: admins/manager anyone, leads their campus, everyone themselves. */
+/** Who may export whose audit pack: the manager, owner and admins with audit access anyone, leads their campus, everyone themselves. */
 export function canExportAudit(viewer: User, target: User): boolean {
   if (viewer.id === target.id) return true
-  if (viewer.role === 'admin' || viewer.role === 'manager') return true
+  if (can(viewer, 'audit')) return true
   return viewer.role === 'lead' && viewer.campusId === target.campusId
 }
 

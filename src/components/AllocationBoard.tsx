@@ -13,13 +13,14 @@ import {
   type Evaluation,
 } from '../data/allocation'
 import { allocationWorkbook } from '../data/allocationSheets'
-import { campusName, canManageStudents, courseName, intakeLabel, userName } from '../data/logic'
-import { SLOTS, SLOT_LABEL, WEEKDAYS, type AllocationDraft, type Group, type User } from '../data/types'
+import { campusName, can, courseName, intakeLabel, userName } from '../data/logic'
+import { SLOTS, SLOT_LABEL, WEEKDAYS, type AllocationDraft, type Group, type User, type Weekday } from '../data/types'
 import { saveFile } from '../lib/download'
 import { buildXlsx } from '../lib/xlsx'
 import { useDb } from '../store/db'
 import { Toast } from './Comms'
 import { Badge, Button, Card, Input, Modal, Progress, Select, Textarea, cx } from './ui'
+import { LevelBadge } from './StatusBadges'
 
 type Fit = 'fits' | 'warn' | 'blocked'
 const fitOf = (e: Evaluation): Fit => (e.hard.length ? 'blocked' : e.soft.length ? 'warn' : 'fits')
@@ -39,7 +40,7 @@ function SessionChips({ g }: { g: Group }) {
 
 export function AllocationBoard({ draft }: { draft: AllocationDraft }) {
   const { db, me, setDraftAssignment, toggleDraftLock, applySuggestions, clearSuggestions, publishDraft } = useDb()
-  const editable = draft.status === 'draft' && !!me && canManageStudents(me.role)
+  const editable = draft.status === 'draft' && !!me && can(me, 'allocation')
   const ctx = useMemo(() => buildContext(db, draft), [db, draft])
   const scope = useMemo(() => new Set(draft.groupIds), [draft.groupIds])
   const [active, setActive] = useState<string | null>(null) // selected or dragged group
@@ -313,15 +314,17 @@ function GroupCard({ g, active, editable, onSelect, onDragStart, onDragEnd, note
   )
 }
 
-function WeekGrid({ groups, scope, preview, clashes }: { groups: Group[]; scope: Set<string>; preview: Group | null; clashes: boolean }) {
+/** Mon–Sun × session grid. Days off are shaded red. */
+function WeekGrid({ groups, scope, preview, clashes, offDays }: { groups: Group[]; scope: Set<string>; preview: Group | null; clashes: boolean; offDays: Weekday[] }) {
   const cell = (day: (typeof WEEKDAYS)[number], slot: (typeof SLOTS)[number]) => {
     const here = groups.filter((g) => groupSessions(g).some((s) => s.day === day && s.slots.includes(slot)))
     const pv = preview && groupSessions(preview).some((s) => s.day === day && s.slots.includes(slot))
-    const cls = here.length > 1 ? 'bg-rose-500' : here.length === 1 ? (scope.has(here[0].id) ? 'bg-brand-500' : 'bg-slate-400') : 'bg-slate-100'
+    const off = offDays.includes(day)
+    const cls = here.length > 1 || (here.length && off) ? 'bg-rose-500' : here.length === 1 ? (scope.has(here[0].id) ? 'bg-brand-500' : 'bg-slate-400') : off ? 'bg-rose-200' : 'bg-slate-100'
     return (
       <span
         key={`${day}${slot}`}
-        title={`${day} ${SLOT_LABEL[slot]}${here.length ? `: ${here.map((g) => g.code).join(', ')}` : ''}`}
+        title={`${day} ${SLOT_LABEL[slot]}${off ? ' (day off)' : ''}${here.length ? `: ${here.map((g) => g.code).join(', ')}` : ''}`}
         className={cx('h-3.5 rounded-sm', cls, pv && (here.length || clashes ? 'ring-2 ring-rose-500 ring-offset-1' : 'ring-2 ring-emerald-500 ring-offset-1'))}
       />
     )
@@ -329,7 +332,7 @@ function WeekGrid({ groups, scope, preview, clashes }: { groups: Group[]; scope:
   return (
     <div className="grid grid-cols-[1.75rem_repeat(7,1fr)] gap-0.5 text-[10px] text-slate-400">
       <span />
-      {WEEKDAYS.map((d) => <span key={d} className="text-center">{d[0]}</span>)}
+      {WEEKDAYS.map((d) => <span key={d} title={offDays.includes(d) ? `${d}: day off` : d} className={cx('text-center', offDays.includes(d) && 'font-semibold text-rose-600')}>{d[0]}</span>)}
       {SLOTS.map((s) => (
         <div key={s} className="contents">
           <span className="leading-3.5">{SLOT_SHORT[s]}</span>
@@ -366,17 +369,20 @@ function PatLane(props: {
         <div className="min-w-0">
           <Link to={`/staff/${pat.id}`} className="block truncate font-medium hover:text-brand-600">{pat.name}</Link>
           <div className="truncate text-xs text-slate-500">
-            {campusName(db, pat.campusId)} · {patHours(db, pat)} · off {off.join('/') || 'none'}
+            {campusName(db, pat.campusId)} · {patHours(db, pat)} · <span className={off.length ? 'font-medium text-rose-600' : undefined}>off {off.join('/') || 'none'}</span>
           </div>
         </div>
-        {pat.status === 'onboarding' && <Badge tone="amber">Training</Badge>}
+        <span className="flex shrink-0 gap-1">
+          {pat.status === 'onboarding' && <Badge tone="amber">Training</Badge>}
+          {pat.level && pat.status !== 'onboarding' && <LevelBadge level={pat.level} />}
+        </span>
       </div>
       <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
         <div className="flex-1"><Progress value={(load / max) * 100} tone={load > max ? 'bad' : load > max * 0.9 ? 'warn' : 'good'} /></div>
         <span className="tabular-nums">{load}/{max}</span>
         <span className="tabular-nums">{ctxGroups.length}{prof.targetGroups ? `/${prof.targetGroups}` : ''} grp</span>
       </div>
-      <WeekGrid groups={ctxGroups} scope={props.scope} preview={activeGroup && !ctxGroups.some((g) => g.id === activeGroup.id) ? activeGroup : null} clashes={!!evaluation?.hard.some((h) => h.startsWith('Clashes'))} />
+      <WeekGrid groups={ctxGroups} scope={props.scope} preview={activeGroup && !ctxGroups.some((g) => g.id === activeGroup.id) ? activeGroup : null} clashes={!!evaluation?.hard.some((h) => h.startsWith('Clashes'))} offDays={off} />
       <ul className="mt-2 flex flex-wrap gap-1">
         {ctxGroups.map((g) => {
           const inScope = props.scope.has(g.id)

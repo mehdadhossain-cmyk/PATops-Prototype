@@ -1,5 +1,5 @@
 import type { ModuleStatus } from '../data/logic'
-import { ROLE_LABEL, type Role, type StaffStatus, type StudentStatus } from '../data/types'
+import { PAT_LEVEL_LABEL, ROLE_LABEL, type PatLevel, type Role, type StaffStatus, type StudentStatus } from '../data/types'
 import { Badge } from './ui'
 
 export function StaffStatusBadge({ status }: { status: StaffStatus }) {
@@ -14,8 +14,14 @@ export function StaffStatusBadge({ status }: { status: StaffStatus }) {
 }
 
 export function RoleBadge({ role }: { role: Role }) {
-  const tone = ({ manager: 'purple', admin: 'blue', lead: 'amber', pat: 'slate' } as const)[role]
+  const tone = ({ owner: 'red', manager: 'purple', admin: 'blue', lead: 'amber', pat: 'slate' } as const)[role]
   return <Badge tone={tone}>{ROLE_LABEL[role]}</Badge>
+}
+
+export function LevelBadge({ level }: { level: PatLevel | null }) {
+  if (!level) return null
+  const tone = ({ trainee: 'amber', junior: 'blue', senior: 'green' } as const)[level]
+  return <Badge tone={tone}>{PAT_LEVEL_LABEL[level]}</Badge>
 }
 
 export function ModuleStatusBadge({ status, overdue }: { status: ModuleStatus; overdue?: boolean }) {

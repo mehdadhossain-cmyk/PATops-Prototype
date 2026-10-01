@@ -2,9 +2,10 @@
 // These are kept backend-agnostic so the localStorage store can later be
 // swapped for a real API without touching the UI.
 
-export type Role = 'manager' | 'admin' | 'lead' | 'pat'
+export type Role = 'owner' | 'manager' | 'admin' | 'lead' | 'pat'
 
 export const ROLE_LABEL: Record<Role, string> = {
+  owner: 'Master Owner',
   manager: 'PAT Manager',
   admin: 'PAT Admin',
   lead: 'PAT Lead',
@@ -15,6 +16,30 @@ export type Weekday = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun'
 export const WEEKDAYS: Weekday[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export type Shift = 'morning' | 'evening'
+
+/** Experience level of a PAT. */
+export type PatLevel = 'trainee' | 'junior' | 'senior'
+export const PAT_LEVELS: PatLevel[] = ['trainee', 'junior', 'senior']
+export const PAT_LEVEL_LABEL: Record<PatLevel, string> = { trainee: 'Trainee', junior: 'Junior', senior: 'Senior' }
+
+/**
+ * Areas of the app an admin can be given access to. The Master Owner and the PAT Manager
+ * always have every permission and are the only ones who can grant them.
+ */
+export type Permission = 'allocation' | 'schedules' | 'staff' | 'training' | 'academic' | 'attendance' | 'submissions' | 'lsa' | 'tasks' | 'audit' | 'settings'
+export const PERMISSIONS: { key: Permission; label: string; hint: string }[] = [
+  { key: 'allocation', label: 'PAT allocation', hint: 'Allocation board, drafts and publishing, PAT allocation settings, changing a group’s PAT' },
+  { key: 'schedules', label: 'Working days & hours', hint: 'Set PATs’ shift, working days, days off and working hours (PATs can’t change their own)' },
+  { key: 'staff', label: 'Staff accounts', hint: 'Create accounts, edit profiles, PAT level, activate and deactivate staff' },
+  { key: 'training', label: 'Training content', hint: 'Edit training modules and quizzes' },
+  { key: 'academic', label: 'Intakes, groups & students', hint: 'Create, edit and delete intakes and groups; edit and import student records' },
+  { key: 'attendance', label: 'Attendance & retention', hint: 'Upload weekly attendance and make retention decisions' },
+  { key: 'submissions', label: 'Non-submissions', hint: 'Create submission periods and import non-submissions' },
+  { key: 'lsa', label: 'LSA records', hint: 'Import the PAT LSA records sheet' },
+  { key: 'tasks', label: 'Assign tasks', hint: 'Assign tasks to PATs and see everyone’s assigned tasks' },
+  { key: 'audit', label: 'Audit export', hint: 'Export any staff member’s audit pack' },
+  { key: 'settings', label: 'Settings', hint: 'Campuses, partner universities and courses' },
+]
 
 export type StaffStatus = 'invited' | 'onboarding' | 'active' | 'inactive'
 
@@ -38,6 +63,10 @@ export interface User {
   campusId: string | null
   status: StaffStatus
   startDate: string // ISO date
+  /** PATs only. */
+  level: PatLevel | null
+  /** Admins only: the areas they have been given access to. */
+  permissions: Permission[]
   phone: string
   shift: Shift | null
   workDays: Weekday[]
@@ -225,7 +254,8 @@ export interface CommLog {
   studentId: string | null
   /** Set for announcements. */
   groupIds: string[]
-  channel: Channel
+  /** One or more channels, e.g. a WhatsApp message followed up by email. */
+  channels: Channel[]
   direction: 'outbound' | 'inbound'
   outcome: ContactOutcome
   reason: ContactReason
@@ -507,6 +537,41 @@ export interface AllocationDraft {
   publishedBy: string | null
 }
 
+export type ProbationOutcome = 'confirmed' | 'not_passed'
+export const PROBATION_OUTCOME_LABEL: Record<ProbationOutcome, string> = { confirmed: 'Passed and confirmed', not_passed: 'Not passed' }
+
+/** A PAT's probation. It ends 4 months after the start date unless the manager extends it. */
+export interface Probation {
+  userId: string
+  /** Set when the manager extends the probation. */
+  extendedTo: string | null
+  outcome: ProbationOutcome | null
+  decidedAt: string | null
+  decidedBy: string | null
+  note: string
+  /** When the manager confirmed the outcome to the HR manager. */
+  hrNotifiedAt: string | null
+  hrNotifiedBy: string | null
+  /** Every step, for the probation timeline. */
+  events: { at: string; by: string; text: string }[]
+}
+
+/** A private note about a member of staff. Only the PAT Manager and the Master Owner can see these. */
+export interface StaffNote {
+  id: string
+  userId: string
+  authorId: string
+  at: string
+  editedAt: string | null
+  text: string
+}
+
+export interface AppSettings {
+  /** Who probation outcomes are confirmed to. */
+  hrManagerName: string
+  hrManagerEmail: string
+}
+
 export interface DbState {
   version: number
   campuses: Campus[]
@@ -530,6 +595,9 @@ export interface DbState {
   assignedTasks: AssignedTask[]
   allocationProfiles: AllocationProfile[]
   allocationDrafts: AllocationDraft[]
+  probations: Probation[]
+  staffNotes: StaffNote[]
+  settings: AppSettings
   users: User[]
   trainingModules: TrainingModule[]
   trainingProgress: TrainingProgress[]

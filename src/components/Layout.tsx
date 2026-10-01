@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { tasksFor } from '../data/tasks'
+import { needsManager, probationRows } from '../data/probation'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { campusName, canManageStudents, canManageTraining, canViewStaff } from '../data/logic'
+import { campusName, can, canViewStaff, isTop } from '../data/logic'
 import { ROLE_LABEL } from '../data/types'
 import { useDb } from '../store/db'
 import { Avatar, cx } from './ui'
@@ -24,6 +25,7 @@ export function Layout() {
     const today = new Date().toISOString().slice(0, 10)
     return tasksFor(db, me).filter((t) => t.due && t.due <= today).length
   }, [db, me])
+  const probationDue = useMemo(() => (me && isTop(me.role) ? probationRows(db).filter(needsManager).length : 0), [db, me])
   if (!me) return null
 
   const nav: NavItem[] = [
@@ -39,15 +41,16 @@ export function Layout() {
     { to: '/non-submissions', label: 'Non-submissions', icon: '✉', show: true },
     { to: '/lsa', label: 'LSAs', icon: '✍', show: true },
     { to: '/leave', label: 'Leave & cover', icon: '✈', show: true },
-    { to: '/allocation', label: 'PAT allocation', icon: '⇄', show: canViewStaff(me.role) },
+    { to: '/allocation', label: 'PAT allocation', icon: '⇄', show: can(me, 'allocation') },
     { to: '/intakes', label: 'Intakes', icon: '◷', show: canViewStaff(me.role) },
-    { to: '/import', label: 'Import data', icon: '⇪', show: canManageStudents(me.role) },
-    { to: '/attendance', label: 'Attendance upload', icon: '▥', show: canManageStudents(me.role) },
+    { to: '/import', label: 'Import data', icon: '⇪', show: can(me, 'academic') },
+    { to: '/attendance', label: 'Attendance upload', icon: '▥', show: can(me, 'attendance') },
     { to: '/staff', label: 'Staff', icon: '👥', show: canViewStaff(me.role) },
+    { to: '/probation', label: 'Probation', icon: '⏳', show: isTop(me.role), badge: probationDue },
     { to: '/training-tracker', label: 'Training tracker', icon: '✓', show: canViewStaff(me.role) },
-    { to: '/training-admin', label: 'Training content', icon: '⚙', show: canManageTraining(me.role) },
+    { to: '/training-admin', label: 'Training content', icon: '⚙', show: can(me, 'training') },
     { to: canViewStaff(me.role) ? '/audit' : '/audit/me', label: canViewStaff(me.role) ? 'Audit export' : 'My audit pack', icon: '⤓', show: true },
-    { to: '/settings', label: 'Settings', icon: '⚑', show: me.role === 'admin' || me.role === 'manager' },
+    { to: '/settings', label: 'Settings', icon: '⚑', show: can(me, 'settings') || isTop(me.role) },
   ]
 
 

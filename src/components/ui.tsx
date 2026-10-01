@@ -131,20 +131,20 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
 }
 
 /** Two-step button that asks for confirmation inline (no browser dialog). */
-export function ConfirmButton({ label, confirmLabel, onConfirm, variant = 'danger', link }: { label: string; confirmLabel: string; onConfirm: () => void; variant?: BtnVariant; link?: boolean }) {
+export function ConfirmButton({ label, confirmLabel, onConfirm, variant = 'danger', link, yesLabel = 'Yes, reset' }: { label: string; confirmLabel: string; onConfirm: () => void; variant?: BtnVariant; link?: boolean; yesLabel?: string }) {
   const [asking, setAsking] = useState(false)
   if (!asking) {
     return link ? (
-      <button onClick={() => setAsking(true)} className="text-sm text-slate-500 underline hover:text-slate-700">{label}</button>
+      <button type="button" onClick={() => setAsking(true)} className="text-sm text-slate-500 underline hover:text-slate-700">{label}</button>
     ) : (
-      <Button variant={variant} onClick={() => setAsking(true)}>{label}</Button>
+      <Button type="button" variant={variant} onClick={() => setAsking(true)}>{label}</Button>
     )
   }
   return (
     <span className="inline-flex flex-wrap items-center gap-2 text-sm">
       <span className="text-slate-600">{confirmLabel}</span>
-      <Button variant="danger" onClick={() => { setAsking(false); onConfirm() }}>Yes, reset</Button>
-      <Button variant="secondary" onClick={() => setAsking(false)}>Cancel</Button>
+      <Button type="button" variant="danger" onClick={() => { setAsking(false); onConfirm() }}>{yesLabel}</Button>
+      <Button type="button" variant="secondary" onClick={() => setAsking(false)}>Cancel</Button>
     </span>
   )
 }

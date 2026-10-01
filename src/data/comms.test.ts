@@ -11,7 +11,7 @@ const now = new Date('2026-09-25T12:00:00Z')
 
 const log = (p: Partial<CommLog>): CommLog => ({
   id: Math.random().toString(36), authorId: pat.id, kind: 'individual', studentId: s1.id, groupIds: [],
-  channel: 'phone', direction: 'outbound', outcome: 'reached', reason: 'attendance', summary: 'x',
+  channels: ['phone'], direction: 'outbound', outcome: 'reached', reason: 'attendance', summary: 'x',
   at: '2026-09-20T10:00:00Z', loggedAt: '2026-09-20T10:00:00Z', followUpDate: null, followUpDoneAt: null,
   voidedAt: null, voidReason: '', ...p,
 })

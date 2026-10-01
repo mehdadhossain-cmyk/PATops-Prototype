@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fmtDate, fmtDateTime, studentName, userName, visibleGroups, visibleStudents } from '../data/logic'
+import { channelsLabel, fmtDate, fmtDateTime, studentName, userName, visibleGroups, visibleStudents } from '../data/logic'
 import {
   CHANNEL_LABEL,
   OUTCOME_LABEL,
@@ -21,6 +21,9 @@ export const CHANNEL_ICON: Record<Channel, string> = {
   whatsapp: '🟢',
   teams: '🎥',
 }
+
+/** Display order for channels. */
+const CHANNEL_ORDER: Channel[] = ['phone', 'whatsapp', 'email', 'sms', 'in_person', 'teams']
 
 const toLocalInput = (d: Date) => {
   const off = d.getTimezoneOffset() * 60000
@@ -54,7 +57,7 @@ function LogContactForm({ onClose, initialMode, studentIds, groupIds }: { onClos
   const [students, setStudents] = useState<string[]>(studentIds)
   const [groups, setGroups] = useState<string[]>(groupIds)
   const [search, setSearch] = useState('')
-  const [channel, setChannel] = useState<Channel>(initialMode === 'announcement' ? 'whatsapp' : 'phone')
+  const [channels, setChannels] = useState<Channel[]>([initialMode === 'announcement' ? 'whatsapp' : 'phone'])
   const [direction, setDirection] = useState<'outbound' | 'inbound'>('outbound')
   const [outcome, setOutcome] = useState<ContactOutcome>('reached')
   const [reason, setReason] = useState<ContactReason>(initialMode === 'announcement' ? 'admin' : 'attendance')
@@ -77,11 +80,12 @@ function LogContactForm({ onClose, initialMode, studentIds, groupIds }: { onClos
     const at = new Date(when)
     if (mode === 'individual' && students.length === 0) return setError('Choose at least one student')
     if (mode === 'announcement' && groups.length === 0) return setError('Choose at least one group')
+    if (channels.length === 0) return setError('Choose at least one channel')
     if (summary.trim().length < 5) return setError('Add a short summary of what was discussed or sent')
     if (isNaN(+at) || at.getTime() > Date.now() + 60000) return setError('The contact time cannot be in the future')
     if (followUp && followUp < new Date().toISOString().slice(0, 10)) return setError('The follow-up date is in the past')
     const base = {
-      channel,
+      channels: CHANNEL_ORDER.filter((c) => channels.includes(c)),
       direction: mode === 'announcement' ? 'outbound' : direction,
       outcome: mode === 'announcement' ? 'reached' : outcome,
       reason,
@@ -97,14 +101,15 @@ function LogContactForm({ onClose, initialMode, studentIds, groupIds }: { onClos
     onClose(mode === 'individual' ? `Logged contact with ${students.length} student${students.length > 1 ? 's' : ''}` : `Logged announcement to ${groups.length} group${groups.length > 1 ? 's' : ''}`)
   }
 
-  const channels: Channel[] = mode === 'announcement' ? ['whatsapp', 'email', 'sms', 'in_person', 'teams'] : ['phone', 'whatsapp', 'email', 'sms', 'in_person', 'teams']
+  const options: Channel[] = mode === 'announcement' ? CHANNEL_ORDER.filter((c) => c !== 'phone') : CHANNEL_ORDER
+  const toggleChannel = (c: Channel) => { setChannels(channels.includes(c) ? channels.filter((x) => x !== c) : [...channels, c]); setError('') }
 
   return (
     <Modal open title="Log contact" onClose={() => onClose()} wide>
       <form onSubmit={submit} className="space-y-4">
         <Tabs
           value={mode}
-          onChange={(m) => { setMode(m); setError(''); if (m === 'announcement' && channel === 'phone') setChannel('whatsapp') }}
+          onChange={(m) => { setMode(m); setError(''); if (m === 'announcement' && channels.includes('phone')) setChannels(channels.filter((c) => c !== 'phone').length ? channels.filter((c) => c !== 'phone') : ['whatsapp']) }}
           options={[{ value: 'individual', label: 'Contact with student(s)' }, { value: 'announcement', label: 'Group announcement' }]}
         />
 
@@ -150,11 +155,11 @@ function LogContactForm({ onClose, initialMode, studentIds, groupIds }: { onClos
           </Field>
         )}
 
-        <Field label="Channel" group>
+        <Field label="Channel(s)" group hint="Choose every channel used, e.g. a phone call followed by a WhatsApp message.">
           <div className="flex flex-wrap gap-2">
-            {channels.map((c) => (
-              <button type="button" key={c} onClick={() => setChannel(c)} className={cx('rounded-lg border px-3 py-1.5 text-sm', channel === c ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 hover:bg-slate-50')}>
-                {CHANNEL_ICON[c]} {CHANNEL_LABEL[c]}
+            {options.map((c) => (
+              <button type="button" key={c} aria-pressed={channels.includes(c)} onClick={() => toggleChannel(c)} className={cx('rounded-lg border px-3 py-1.5 text-sm', channels.includes(c) ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 hover:bg-slate-50')}>
+                {channels.includes(c) ? '✓ ' : ''}{CHANNEL_ICON[c]} {CHANNEL_LABEL[c]}
               </button>
             ))}
           </div>
@@ -220,8 +225,8 @@ export function CommEntry({ c, showStudent = true, showAuthor = true }: { c: Com
 
   return (
     <li className={cx('flex gap-3 py-3', c.voidedAt && 'opacity-50')}>
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-base" title={CHANNEL_LABEL[c.channel]}>
-        {c.kind === 'announcement' ? '📣' : CHANNEL_ICON[c.channel]}
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-base" title={channelsLabel(c)}>
+        {c.kind === 'announcement' ? '📣' : CHANNEL_ICON[c.channels[0]]}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
@@ -236,7 +241,7 @@ export function CommEntry({ c, showStudent = true, showAuthor = true }: { c: Com
             showStudent && student && <Link to={`/students/${student.id}`} className="font-medium hover:text-brand-600">{studentName(student)}</Link>
           )}
           <span className="text-slate-500">
-            {CHANNEL_LABEL[c.channel]}
+            {channelsLabel(c)}
             {c.kind === 'individual' && ` · ${c.direction === 'outbound' ? 'outgoing' : 'incoming'}`}
           </span>
           {c.kind === 'individual' && <Badge>{REASON_LABEL[c.reason]}</Badge>}

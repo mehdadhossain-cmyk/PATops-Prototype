@@ -1,6 +1,6 @@
 import { HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { Layout } from './components/Layout'
-import { canManageStudents, canManageTraining, canViewStaff } from './data/logic'
+import { can, canViewStaff, isTop } from './data/logic'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { ModulePage } from './pages/ModulePage'
@@ -19,6 +19,7 @@ import { NonSubmissionsPage } from './pages/NonSubmissionsPage'
 import { LsaPage } from './pages/LsaPage'
 import { LeavePage } from './pages/LeavePage'
 import { TasksPage } from './pages/TasksPage'
+import { ProbationPage } from './pages/ProbationPage'
 import { AuditIndexPage, AuditPackPage } from './pages/AuditPage'
 import { AllocationBoardPage, AllocationPage } from './pages/AllocationPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
@@ -58,20 +59,21 @@ function AppRoutes() {
         <Route path="lsa" element={<LsaPage />} />
         <Route path="leave" element={<LeavePage />} />
         <Route path="tasks" element={<TasksPage />} />
+        {isTop(me.role) && <Route path="probation" element={<ProbationPage />} />}
         {staff && <Route path="audit" element={<AuditIndexPage />} />}
-        {staff && <Route path="allocation" element={<AllocationPage />} />}
-        {staff && <Route path="allocation/:id" element={<AllocationBoardPage />} />}
+        {can(me, 'allocation') && <Route path="allocation" element={<AllocationPage />} />}
+        {can(me, 'allocation') && <Route path="allocation/:id" element={<AllocationBoardPage />} />}
         <Route path="audit/:id" element={<AuditPackPage />} />
-        {canManageStudents(me.role) && <Route path="attendance" element={<AttendancePage />} />}
+        {can(me, 'attendance') && <Route path="attendance" element={<AttendancePage />} />}
         <Route path="students/:id" element={<StudentDetailPage />} />
         {staff && <Route path="intakes" element={<IntakesPage />} />}
-        {canManageStudents(me.role) && <Route path="import" element={<ImportPage />} />}
+        {can(me, 'academic') && <Route path="import" element={<ImportPage />} />}
         {staff && <Route path="staff" element={<StaffPage />} />}
         {staff && <Route path="staff/:id" element={<StaffDetailPage />} />}
         {staff && <Route path="staff/:id/edit" element={<ProfilePage />} />}
         {staff && <Route path="training-tracker" element={<TrainingTrackerPage />} />}
-        {canManageTraining(me.role) && <Route path="training-admin" element={<TrainingAdminPage />} />}
-        {canManageTraining(me.role) && <Route path="settings" element={<SettingsPage />} />}
+        {can(me, 'training') && <Route path="training-admin" element={<TrainingAdminPage />} />}
+        {(can(me, 'settings') || isTop(me.role)) && <Route path="settings" element={<SettingsPage />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

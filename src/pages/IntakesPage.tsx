@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { GroupModal } from '../components/GroupModal'
 import { Badge, Button, Card, Field, Input, Modal, PageHeader, Select } from '../components/ui'
-import { canManageStudents, fmtDate, visibleGroups } from '../data/logic'
+import { can, fmtDate, visibleGroups } from '../data/logic'
 import type { Intake, IntakeStatus } from '../data/types'
 import { useDb } from '../store/db'
 
@@ -10,8 +11,10 @@ const statusTone = { planning: 'purple', active: 'green', closed: 'slate' } as c
 export function IntakesPage() {
   const { db, me } = useDb()
   const [editing, setEditing] = useState<Intake | null>(null)
+  const [addingTo, setAddingTo] = useState<string | null>(null)
+  const navigate = useNavigate()
   if (!me) return null
-  const manage = canManageStudents(me.role)
+  const manage = can(me, 'academic')
   const groups = visibleGroups(db, me)
   const studentsByGroup = new Map<string, number>()
   for (const s of db.students) if (s.status === 'active') studentsByGroup.set(s.groupId, (studentsByGroup.get(s.groupId) ?? 0) + 1)
@@ -73,7 +76,10 @@ export function IntakesPage() {
                             </td>
                             {manage && (
                               <td className="py-2.5 text-right">
-                                <Button variant="ghost" onClick={() => setEditing(i)}>Edit</Button>
+                                <span className="inline-flex gap-1">
+                                  <Button variant="ghost" onClick={() => setAddingTo(i.id)}>+ Group</Button>
+                                  <Button variant="ghost" onClick={() => setEditing(i)}>Edit</Button>
+                                </span>
                               </td>
                             )}
                           </tr>
@@ -88,6 +94,7 @@ export function IntakesPage() {
         })}
       </div>
       {editing && <IntakeModal key={editing.id} initial={editing} onClose={() => setEditing(null)} />}
+      {addingTo && <GroupModal intakeId={addingTo} onClose={() => setAddingTo(null)} onSaved={(id) => navigate(`/groups/${id}`)} />}
     </div>
   )
 }

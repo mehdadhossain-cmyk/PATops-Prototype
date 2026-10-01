@@ -1,6 +1,6 @@
 // Attendance and at-risk rules.
-import type { AttendanceRecord, DbState, RetentionStage, Role, Student, User } from './types'
-import { visibleStudents } from './logic'
+import type { AttendanceRecord, DbState, RetentionStage, Student, User } from './types'
+import { can, visibleStudents } from './logic'
 
 /** Students below this overall attendance are at risk. */
 export const RISK_THRESHOLD = 65
@@ -9,7 +9,7 @@ export const NO_ACTION_DAYS = 14
 
 const day = 24 * 60 * 60 * 1000
 
-export const canDecideRetention = (r: Role) => r === 'admin' || r === 'manager'
+export const canDecideRetention = (u: User) => can(u, 'attendance')
 
 const indexCache = new WeakMap<AttendanceRecord[], Map<string, AttendanceRecord[]>>()
 

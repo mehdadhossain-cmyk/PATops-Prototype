@@ -1,11 +1,11 @@
 // One-click audit pack for a member of staff: everything PATops holds about their work,
 // as sections that render both as a printable report and as spreadsheet tabs.
-import { activeModules, campusName, courseName, fmtDate, fmtStamp, fmtSchedule, intakeLabel, patGroups, patCommStats, progressFor, studentName, trainingSummary, userName } from './logic'
+import { activeModules, campusName, channelsLabel, courseName, fmtDate, fmtStamp, fmtSchedule, intakeLabel, patGroups, patCommStats, progressFor, studentName, trainingSummary, userName } from './logic'
 import { lsaStatus } from './lsa'
 import { casePatId, planCycles } from './wellbeing'
 import { attendanceSummary } from './risk'
 import { leaveDaysTaken, slotsFor, workingDays } from './leave'
-import { CHANNEL_LABEL, FOLLOW_UP_LABEL, LEAVE_STATUS_LABEL, LEAVE_TYPE_LABEL, OUTCOME_LABEL, REASON_LABEL, ROLE_LABEL, STAGE_LABEL, WELLBEING_CATEGORY_LABEL, type DbState, type User } from './types'
+import { FOLLOW_UP_LABEL, PAT_LEVEL_LABEL, LEAVE_STATUS_LABEL, LEAVE_TYPE_LABEL, OUTCOME_LABEL, REASON_LABEL, ROLE_LABEL, STAGE_LABEL, WELLBEING_CATEGORY_LABEL, type DbState, type User } from './types'
 
 export interface AuditRange {
   from: string | null // ISO date, inclusive
@@ -81,7 +81,7 @@ export function buildAuditPack(db: DbState, userId: string, range: AuditRange, g
     columns: ['Date/time', 'Type', 'Student', 'EBS person code', 'Groups', 'Channel', 'Direction', 'Outcome', 'Reason', 'Summary', 'Follow-up date', 'Follow-up done', 'Logged at', 'Entered in error'],
     rows: comms.map((c) => [
       fmtStamp(c.at), c.kind === 'announcement' ? 'Announcement' : 'Contact', sName(c.studentId), student(c.studentId)?.ebsPersonCode ?? '',
-      c.groupIds.map((g) => groupCode(g)).join(' '), CHANNEL_LABEL[c.channel], c.kind === 'announcement' ? '' : c.direction, c.kind === 'announcement' ? '' : OUTCOME_LABEL[c.outcome],
+      c.groupIds.map((g) => groupCode(g)).join(' '), channelsLabel(c), c.kind === 'announcement' ? '' : c.direction, c.kind === 'announcement' ? '' : OUTCOME_LABEL[c.outcome],
       c.kind === 'announcement' ? '' : REASON_LABEL[c.reason], c.summary, c.followUpDate ? fmtDate(c.followUpDate) : '', c.followUpDoneAt ? fmtDate(c.followUpDoneAt) : '', fmtStamp(c.loggedAt), c.voidedAt ? `Yes: ${c.voidReason}` : '',
     ]),
   })
@@ -201,7 +201,7 @@ export function buildAuditPack(db: DbState, userId: string, range: AuditRange, g
     range,
     facts: [
       ['Name', u.name],
-      ['Role', ROLE_LABEL[u.role]],
+      ['Role', `${ROLE_LABEL[u.role]}${u.level ? ` (${PAT_LEVEL_LABEL[u.level]})` : ''}`],
       ['Campus', campusName(db, u.campusId)],
       ['Email', u.email],
       ['Status', u.status],

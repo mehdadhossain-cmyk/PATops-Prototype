@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { defaultHours, parseHours, profileFor } from '../data/allocation'
+import { defaultHours, profileFor } from '../data/allocation'
 import type { User } from '../data/types'
 import { useDb } from '../store/db'
 import { Button, Card, Field, Input, Textarea } from './ui'
@@ -10,7 +10,6 @@ export function AllocationSettings({ user, editable }: { user: User; editable: b
   const p = profileFor(db, user.id)
   const [editing, setEditing] = useState(false)
   const [f, setF] = useState({
-    workHours: p.workHours ?? '',
     availableFrom: p.availableFrom ?? '',
     maxStudents: p.maxStudents?.toString() ?? '',
     minStudents: p.minStudents?.toString() ?? '',
@@ -22,7 +21,7 @@ export function AllocationSettings({ user, editable }: { user: User; editable: b
   const [error, setError] = useState('')
   const num = (s: string) => (s.trim() ? Number(s) : null)
   const summary = [
-    `Hours ${p.workHours || `${defaultHours(user)} (from shift)`}`,
+    `Hours ${p.workHours || `${defaultHours(user)} (from shift)`} (see working pattern)`,
     p.availableFrom && `available from ${p.availableFrom}`,
     `max ${p.maxStudents ?? 200} students`,
     p.minStudents && `at least ${p.minStudents} students`,
@@ -43,7 +42,6 @@ export function AllocationSettings({ user, editable }: { user: User; editable: b
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault()
-            if (f.workHours && !parseHours(f.workHours)) return setError('Working hours look like 09:00-17:00')
             const targets: Record<string, number> = {}
             for (const part of f.uniTargets.split(',').map((x) => x.trim()).filter(Boolean)) {
               const m = part.match(/^([A-Za-z]+)\s*[:x ]?\s*(\d+)$/)
@@ -51,14 +49,13 @@ export function AllocationSettings({ user, editable }: { user: User; editable: b
               targets[m[1].toUpperCase()] = Number(m[2])
             }
             saveAllocationProfile({
-              userId: user.id, workHours: f.workHours.trim() || null, availableFrom: f.availableFrom || null, maxStudents: num(f.maxStudents), minStudents: num(f.minStudents),
+              userId: user.id, workHours: p.workHours, availableFrom: f.availableFrom || null, maxStudents: num(f.maxStudents), minStudents: num(f.minStudents),
               targetGroups: num(f.targetGroups), uniTargets: targets, preferredCampusIds: f.preferred, notes: f.notes.trim(),
             })
             setEditing(false)
           }}
         >
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Working hours" hint={`Blank = ${defaultHours(user)} from their shift`}><Input id="ap-hours" value={f.workHours} onChange={(e) => setF({ ...f, workHours: e.target.value })} placeholder="09:00-17:00" /></Field>
             <Field label="Available from"><Input id="ap-from" type="date" value={f.availableFrom} onChange={(e) => setF({ ...f, availableFrom: e.target.value })} /></Field>
             <Field label="Target groups"><Input id="ap-target" type="number" min={0} value={f.targetGroups} onChange={(e) => setF({ ...f, targetGroups: e.target.value })} /></Field>
             <Field label="Max students" hint="Blank = 200"><Input id="ap-max" type="number" min={0} value={f.maxStudents} onChange={(e) => setF({ ...f, maxStudents: e.target.value })} /></Field>
